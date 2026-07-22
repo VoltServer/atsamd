@@ -89,6 +89,7 @@ use super::{
 };
 use crate::typelevel::{Is, Sealed};
 use modular_bitfield::prelude::*;
+use voltserver_hal::dma::Buffer as DmaBuffer;
 
 //==============================================================================
 // Beat
@@ -152,7 +153,7 @@ impl_beat!(
 /// * `incrementing` is correct for the source/sink. For example, an `&[u8]` of
 ///   size one is not incrementing.
 /// * `buffer_len` is correct for the source/sink.
-pub unsafe trait Buffer {
+pub unsafe trait Buffer: DmaBuffer<Self::Beat> {
     /// DMAC beat size
     type Beat: Beat;
     /// Pointer to the buffer. If the buffer is incrementing, the address should
@@ -309,6 +310,8 @@ where
     chan: Chan,
     buffers: Buf,
     complete: bool,
+    trig_src: TriggerSource,
+    trig_act: TriggerAction,
 }
 
 impl<C, S, D, R> Transfer<C, BufferPair<S, D>>
@@ -340,12 +343,14 @@ where
         source: S,
         destination: D,
         circular: bool,
+        trig_src: TriggerSource,
+        trig_act: TriggerAction,
     ) -> Result<Transfer<C, BufferPair<S, D>>> {
         Self::check_buffer_pair(&source, &destination)?;
 
         // SAFETY: The safety checks are done by the function signature and the buffer
         // length verification
-        Ok(unsafe { Self::new_unchecked(chan, source, destination, circular) })
+        Ok(unsafe { Self::new_unchecked(chan, source, destination, circular, trig_src, trig_act) })
     }
 }
 
@@ -400,6 +405,8 @@ where
         mut source: S,
         mut destination: D,
         circular: bool,
+        trig_src: TriggerSource,
+        trig_act: TriggerAction,
     ) -> Transfer<C, BufferPair<S, D>> {
         unsafe {
             chan.as_mut()
@@ -415,9 +422,13 @@ where
             buffers,
             chan,
             complete: false,
+            trig_src,
+            trig_act,
         }
     }
 }
+
+
 
 impl<C, S, D> Transfer<C, BufferPair<S, D>>
 where
@@ -432,20 +443,20 @@ where
     #[inline]
     pub fn begin(
         mut self,
-        trig_src: TriggerSource,
-        trig_act: TriggerAction,
     ) -> Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>> {
         // Reset the complete flag before triggering the transfer.
         // This way an interrupt handler could set complete to true
         // before this function returns.
         self.complete = false;
 
-        let chan = self.chan.into().start(trig_src, trig_act);
+        let chan = self.chan.into().start(self.trig_src, self.trig_act);
 
         Transfer {
             buffers: self.buffers,
             chan,
             complete: self.complete,
+            trig_src: self.trig_src,
+            trig_act: self.trig_act,
         }
     }
 
@@ -481,8 +492,10 @@ where
         source: &'static mut [B; N],
         destination: &'static mut [B; N],
         circular: bool,
+        trig_src: TriggerSource,
+        trig_act: TriggerAction,
     ) -> Self {
-        unsafe { Self::new_unchecked(chan, source, destination, circular) }
+        unsafe { Self::new_unchecked(chan, source, destination, circular, trig_src, trig_act) }
     }
 }
 
@@ -496,7 +509,7 @@ where
     /// Note that is not guaranteed that the trigger request will register,
     /// if a trigger request is already pending for the channel.
     #[inline]
-    pub fn software_trigger(&mut self) {
+    fn software_trigger(&mut self) {
         self.chan.as_mut().software_trigger();
     }
 
@@ -539,7 +552,7 @@ where
 
     /// Check if the transfer has completed
     #[inline]
-    pub fn complete(&mut self) -> bool {
+    fn complete(&mut self) -> bool {
         if !self.complete {
             let chan = self.chan.as_mut();
             let complete = chan.xfer_complete();
@@ -646,5 +659,68 @@ where
         // compiler fence.
         let chan = self.chan.into().free();
         (chan, self.buffers.source, self.buffers.destination)
+    }
+}
+
+//==============================================================================
+// voltserver_hal DMA trait implementations
+//==============================================================================
+impl<Chan, S, D> voltserver_hal::dma::Transfer for Transfer<Chan, BufferPair<S, D>>
+where
+    S: Buffer,
+    D: Buffer<Beat = S::Beat>,
+    Chan: AnyChannel,
+{
+    type Error = super::Error;
+    type SrcWord = S::Beat;
+    type DstWord = D::Beat;
+    type Src = S;
+    type Dst = D;
+
+    fn source_buffer<'a>(&'a self) -> &'a Self::Src {
+        &self.buffers.source
+    }
+
+    fn dest_buffer<'a>(&'a self) -> &'a Self::Dst {
+        &self.buffers.destination
+    }
+}
+
+impl<C, S, D> voltserver_hal::dma::ReadyTransfer for Transfer<C, BufferPair<S, D>>
+where
+    S: Buffer,
+    D: Buffer<Beat = S::Beat>,
+    C: AnyChannel<Status = Ready>,
+{
+    type Busy = Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>>;
+
+    fn begin(self) -> Result<Self::Busy> {
+        Ok(self.begin())
+    }
+}
+
+impl <C, S, D> voltserver_hal::dma::BusyTransfer for Transfer<C, BufferPair<S, D>>
+where
+    S: Buffer,
+    D: Buffer<Beat = S::Beat>,
+    C: AnyChannel<Status = Busy>,
+{
+    type Ready = Transfer<Channel<ChannelId<C>, Ready>, BufferPair<S, D>>;
+
+    fn disable(self) -> Result<Self::Ready> {
+        let trig_src = self.trig_src;
+        let trig_act = self.trig_act;
+        let (channel, src, dst) = self.stop();
+
+        Ok(unsafe { Transfer::new_unchecked(channel, src, dst, false, trig_src, trig_act) })
+    }
+
+    fn software_trigger(&mut self) -> Result<()> {
+        self.software_trigger();
+        Ok(())
+    }
+
+    fn is_complete(&mut self) -> bool {
+        self.complete()
     }
 }

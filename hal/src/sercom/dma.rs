@@ -55,6 +55,16 @@ impl<'a, T: Beat> SharedSliceBuffer<'a, T> {
     }
 }
 
+impl<T: Beat> voltserver_hal::dma::Buffer<T> for SharedSliceBuffer<'_, T> {
+    type Output = [T];
+    fn as_ref<'a>(&'a self) -> &'a [T] {
+        unsafe {
+            let len = self.ptrs.end.offset_from(self.ptrs.start) as usize;
+            core::slice::from_raw_parts(self.ptrs.start, len)
+        }
+    }
+}
+
 unsafe impl<T: Beat> Buffer for SharedSliceBuffer<'_, T> {
     type Beat = T;
     #[inline]
@@ -96,6 +106,14 @@ impl<'a, T: Beat> SinkSourceBuffer<'a, T> {
         Self { word, length }
     }
 }
+
+impl<T: Beat> voltserver_hal::dma::Buffer<T> for SinkSourceBuffer<'_, T> {
+    type Output = [T];
+    fn as_ref<'a>(&'a self) -> &'a Self::Output {
+        unsafe { core::slice::from_raw_parts(self.word as *const _, self.length) }
+    }
+}
+
 unsafe impl<T: Beat> Buffer for SinkSourceBuffer<'_, T> {
     type Beat = T;
     #[inline]
@@ -120,6 +138,13 @@ unsafe impl<T: Beat> Buffer for SinkSourceBuffer<'_, T> {
 #[derive(Clone)]
 pub(crate) struct SercomPtr<T: Beat>(pub(in super::super) *mut T);
 
+impl<T: Beat> voltserver_hal::dma::Buffer<T> for SercomPtr<T> {
+    type Output = T;
+    fn as_ref<'a>(&'a self) -> &'a Self::Output {
+        todo!()
+    }
+}
+
 unsafe impl<T: Beat> Buffer for SercomPtr<T> {
     type Beat = T;
 
@@ -142,6 +167,20 @@ unsafe impl<T: Beat> Buffer for SercomPtr<T> {
 //=============================================================================
 // UART DMA transfers
 //=============================================================================
+impl<C, D> voltserver_hal::dma::Buffer<C::Word> for Uart<C, D>
+where
+    C: uart::ValidConfig,
+    C::Word: Beat,
+    D: uart::Capability,
+{
+    type Output = C::Word;
+    fn as_ref<'a>(&'a self) -> &'a Self::Output {
+        //SAFETY: this is always safe as the UART data register is implemented in hardware
+        // and therefore will always be valid
+        unsafe { &*self.data_ptr() }
+    }
+}
+
 unsafe impl<C, D> Buffer for Uart<C, D>
 where
     C: uart::ValidConfig,
@@ -203,8 +242,8 @@ where
 
         // SAFETY: This is safe because the of the `'static` bound check
         // for `B`, and the fact that the buffer length of an `Uart` is always 1.
-        let xfer = unsafe { dmac::Transfer::new_unchecked(channel, self, buf, false) };
-        xfer.begin(C::Sercom::DMA_RX_TRIGGER, trigger_action)
+        let xfer = unsafe { dmac::Transfer::new_unchecked(channel, self, buf, false, C::Sercom::DMA_RX_TRIGGER, trigger_action) };
+        xfer.begin()
     }
 }
 
@@ -245,8 +284,8 @@ where
 
         // SAFETY: This is safe because the of the `'static` bound check
         // for `B`, and the fact that the buffer length of an `Uart` is always 1.
-        let xfer = unsafe { dmac::Transfer::new_unchecked(channel, buf, self, false) };
-        xfer.begin(C::Sercom::DMA_TX_TRIGGER, trigger_action)
+        let xfer = unsafe { dmac::Transfer::new_unchecked(channel, buf, self, false, C::Sercom::DMA_TX_TRIGGER, trigger_action) };
+        xfer.begin()
     }
 }
 

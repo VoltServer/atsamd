@@ -278,6 +278,14 @@ pub enum Error {
     TransferError,
 }
 
+impl voltserver_hal::dma::Error for Error {
+    fn kind(&self) -> voltserver_hal::dma::ErrorKind {
+        match *self {
+            _ => voltserver_hal::dma::ErrorKind::Other
+        }
+    }
+}
+
 impl From<Error> for crate::sercom::spi::Error {
     fn from(value: Error) -> Self {
         crate::sercom::spi::Error::Dma(value)
