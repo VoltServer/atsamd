@@ -244,26 +244,27 @@ mod dma {
             mut dest: &mut [u8],
             next: Option<&mut DmacDescriptor>,
         ) -> Result<(), Error> {
-            unsafe {
-                self.prepare_read_linked(address, dest, &next)?;
-                let sercom_ptr = self.sercom_ptr();
-                let channel = self._dma_channel.as_mut();
+            //unsafe {
+            //    self.prepare_read_linked(address, dest, &next)?;
+            //    let sercom_ptr = self.sercom_ptr();
+            //    let channel = self._dma_channel.as_mut();
 
-                // SAFETY: We must make sure that any DMA transfer is complete or stopped before
-                // returning.
-                read_dma_linked::<_, _, S>(channel, sercom_ptr, &mut dest, next);
+            //    // SAFETY: We must make sure that any DMA transfer is complete or stopped before
+            //    // returning.
+            //    read_dma_linked::<_, _, S>(channel, sercom_ptr, &mut dest, next);
 
-                while !channel.xfer_complete() {
-                    core::hint::spin_loop();
-                }
+            //    while !channel.xfer_complete() {
+            //        core::hint::spin_loop();
+            //    }
 
-                // Defensively disable channel
-                channel.stop();
+            //    // Defensively disable channel
+            //    channel.stop();
 
-                self.read_status().check_bus_error()?;
-                self._dma_channel.as_mut().xfer_success()?;
-                Ok(())
-            }
+            //    self.read_status().check_bus_error()?;
+            //    self._dma_channel.as_mut().xfer_success()?;
+            //    Ok(())
+            //}
+            todo!()
         }
 
         /// Make an I2C write transaction, with the option to add in linked
@@ -284,33 +285,34 @@ mod dma {
             source: &[u8],
             next: Option<&mut DmacDescriptor>,
         ) -> Result<(), Error> {
-            unsafe {
-                self.prepare_write_linked(address, source, &next)?;
+            //unsafe {
+            //    self.prepare_write_linked(address, source, &next)?;
 
-                let sercom_ptr = self.sercom_ptr();
-                let mut bytes = SharedSliceBuffer::from_slice(source);
-                let channel = self._dma_channel.as_mut();
+            //    let sercom_ptr = self.sercom_ptr();
+            //    let mut bytes = SharedSliceBuffer::from_slice(source);
+            //    let channel = self._dma_channel.as_mut();
 
-                // SAFETY: We must make sure that any DMA transfer is complete or stopped before
-                // returning.
+            //    // SAFETY: We must make sure that any DMA transfer is complete or stopped before
+            //    // returning.
 
-                write_dma_linked::<_, _, S>(channel, sercom_ptr, &mut bytes, next);
+            //    write_dma_linked::<_, _, S>(channel, sercom_ptr, &mut bytes, next);
 
-                while !channel.xfer_complete() {
-                    core::hint::spin_loop();
-                }
+            //    while !channel.xfer_complete() {
+            //        core::hint::spin_loop();
+            //    }
 
-                // Defensively disable channel
-                channel.stop();
+            //    // Defensively disable channel
+            //    channel.stop();
 
-                while !self.read_status().is_idle() {
-                    core::hint::spin_loop();
-                }
+            //    while !self.read_status().is_idle() {
+            //        core::hint::spin_loop();
+            //    }
 
-                self.read_status().check_bus_error()?;
-                self._dma_channel.as_mut().xfer_success()?;
-                Ok(())
-            }
+            //    self.read_status().check_bus_error()?;
+            //    self._dma_channel.as_mut().xfer_success()?;
+            //    Ok(())
+            //}
+            todo!()
         }
     }
 
@@ -326,115 +328,116 @@ mod dma {
             address: u8,
             operations: &mut [i2c::Operation<'_>],
         ) -> Result<(), Self::Error> {
-            use i2c::Operation::{Read, Write};
+            //use i2c::Operation::{Read, Write};
 
-            const NUM_LINKED_TRANSFERS: usize = 16;
+            //const NUM_LINKED_TRANSFERS: usize = 16;
 
-            if operations.is_empty() {
-                return Ok(());
-            }
+            //if operations.is_empty() {
+            //    return Ok(());
+            //}
 
-            let mut sercom_ptr = self.sercom_ptr();
+            //let mut sercom_ptr = self.sercom_ptr();
 
-            // Reserve some space for linked DMA transfer descriptors.
-            // Uses 256 bytes of memory.
-            //
-            // In practice this means that we can only support 17 continuously
-            // linked operations of the same type (R/W) before having to issue
-            // an I2C STOP. DMA-enabled I2C transfers automatically issue stop
-            // commands, and there is no way to turn off that behaviour.
-            //
-            //  In the event that we have more than 17 contiguous operations of
-            //  the same type, we must revert to the byte-by-byte I2C implementations.
-            let mut descriptors = heapless::Vec::<DmacDescriptor, NUM_LINKED_TRANSFERS>::new();
+            //// Reserve some space for linked DMA transfer descriptors.
+            //// Uses 256 bytes of memory.
+            ////
+            //// In practice this means that we can only support 17 continuously
+            //// linked operations of the same type (R/W) before having to issue
+            //// an I2C STOP. DMA-enabled I2C transfers automatically issue stop
+            //// commands, and there is no way to turn off that behaviour.
+            ////
+            ////  In the event that we have more than 17 contiguous operations of
+            ////  the same type, we must revert to the byte-by-byte I2C implementations.
+            //let mut descriptors = heapless::Vec::<DmacDescriptor, NUM_LINKED_TRANSFERS>::new();
 
-            let op_groups = chunk_operations(operations);
+            //let op_groups = chunk_operations(operations);
 
-            for group in op_groups {
-                descriptors.clear();
+            //for group in op_groups {
+            //    descriptors.clear();
 
-                // Default to byte-by-byte impl if we have more than 17 continuous operations,
-                // as we would overflow our DMA linked transfer reeserved space otherwise.
-                if group.len() > NUM_LINKED_TRANSFERS {
-                    self.transaction_byte_by_byte(address, group)?;
-                } else {
-                    // --- Setup all linked descriptors ---
+            //    // Default to byte-by-byte impl if we have more than 17 continuous operations,
+            //    // as we would overflow our DMA linked transfer reeserved space otherwise.
+            //    if group.len() > NUM_LINKED_TRANSFERS {
+            //        self.transaction_byte_by_byte(address, group)?;
+            //    } else {
+            //        // --- Setup all linked descriptors ---
 
-                    // Skip the first operation; we will deal with it when creating the I2C transfer
-                    // (read_dma_linked/write_dma_linked). Every other operation is a linked
-                    // transfer, and we must treat them accordingly.
-                    for op in group.iter_mut().skip(1) {
-                        match op {
-                            Read(buffer) => {
-                                if buffer.is_empty() {
-                                    continue;
-                                }
-                                // Add a new linked descriptor to the stack
-                                descriptors
-                                    .push(DmacDescriptor::default())
-                                    .unwrap_or_else(|_| panic!("BUG: DMAC descriptors overflow"));
-                                let last_descriptor = descriptors.last_mut().unwrap();
-                                let next_ptr =
-                                    (last_descriptor as *mut DmacDescriptor).wrapping_add(1);
+            //        // Skip the first operation; we will deal with it when creating the I2C transfer
+            //        // (read_dma_linked/write_dma_linked). Every other operation is a linked
+            //        // transfer, and we must treat them accordingly.
+            //        for op in group.iter_mut().skip(1) {
+            //            match op {
+            //                Read(buffer) => {
+            //                    if buffer.is_empty() {
+            //                        continue;
+            //                    }
+            //                    // Add a new linked descriptor to the stack
+            //                    descriptors
+            //                        .push(DmacDescriptor::default())
+            //                        .unwrap_or_else(|_| panic!("BUG: DMAC descriptors overflow"));
+            //                    let last_descriptor = descriptors.last_mut().unwrap();
+            //                    let next_ptr =
+            //                        (last_descriptor as *mut DmacDescriptor).wrapping_add(1);
 
-                                unsafe {
-                                    channel::write_descriptor(
-                                        last_descriptor,
-                                        &mut sercom_ptr,
-                                        buffer,
-                                        // Always link the next descriptor. We then set the last
-                                        // transfer's link pointer to null lower down in the code.
-                                        next_ptr,
-                                    );
-                                }
-                            }
+            //                    unsafe {
+            //                        channel::write_descriptor(
+            //                            last_descriptor,
+            //                            &mut sercom_ptr,
+            //                            buffer,
+            //                            // Always link the next descriptor. We then set the last
+            //                            // transfer's link pointer to null lower down in the code.
+            //                            next_ptr,
+            //                        );
+            //                    }
+            //                }
 
-                            Write(bytes) => {
-                                if bytes.is_empty() {
-                                    continue;
-                                }
-                                // Add a new linked descriptor to the stack
-                                descriptors
-                                    .push(DmacDescriptor::default())
-                                    .unwrap_or_else(|_| panic!("BUG: DMAC descriptors overflow"));
-                                let last_descriptor = descriptors.last_mut().unwrap();
-                                let next_ptr =
-                                    (last_descriptor as *mut DmacDescriptor).wrapping_add(1);
+            //                Write(bytes) => {
+            //                    if bytes.is_empty() {
+            //                        continue;
+            //                    }
+            //                    // Add a new linked descriptor to the stack
+            //                    descriptors
+            //                        .push(DmacDescriptor::default())
+            //                        .unwrap_or_else(|_| panic!("BUG: DMAC descriptors overflow"));
+            //                    let last_descriptor = descriptors.last_mut().unwrap();
+            //                    let next_ptr =
+            //                        (last_descriptor as *mut DmacDescriptor).wrapping_add(1);
 
-                                let mut bytes = SharedSliceBuffer::from_slice(bytes);
-                                unsafe {
-                                    channel::write_descriptor(
-                                        last_descriptor,
-                                        &mut bytes,
-                                        &mut sercom_ptr,
-                                        // Always link the next descriptor. We then set the last
-                                        // transfer's link pointer to null lower down in the code.
-                                        next_ptr,
-                                    );
-                                }
-                            }
-                        }
-                    }
+            //                    let mut bytes = SharedSliceBuffer::from_slice(bytes);
+            //                    unsafe {
+            //                        channel::write_descriptor(
+            //                            last_descriptor,
+            //                            &mut bytes,
+            //                            &mut sercom_ptr,
+            //                            // Always link the next descriptor. We then set the last
+            //                            // transfer's link pointer to null lower down in the code.
+            //                            next_ptr,
+            //                        );
+            //                    }
+            //                }
+            //            }
+            //        }
 
-                    // Set the last descriptor to a null pointer to stop the transfer, and avoid
-                    // buffer overflow UB.
-                    if let Some(d) = descriptors.last_mut() {
-                        d.set_next_descriptor(core::ptr::null_mut());
-                    }
+            //        // Set the last descriptor to a null pointer to stop the transfer, and avoid
+            //        // buffer overflow UB.
+            //        if let Some(d) = descriptors.last_mut() {
+            //            d.set_next_descriptor(core::ptr::null_mut());
+            //        }
 
-                    // Now setup and perform the actual transfer
-                    match group.first_mut().unwrap() {
-                        Read(buffer) => unsafe {
-                            self.read_linked(address, buffer, descriptors.first_mut())?;
-                        },
-                        Write(bytes) => unsafe {
-                            self.write_linked(address, bytes, descriptors.first_mut())?;
-                        },
-                    }
-                }
-            }
+            //        // Now setup and perform the actual transfer
+            //        match group.first_mut().unwrap() {
+            //            Read(buffer) => unsafe {
+            //                self.read_linked(address, buffer, descriptors.first_mut())?;
+            //            },
+            //            Write(bytes) => unsafe {
+            //                self.write_linked(address, bytes, descriptors.first_mut())?;
+            //            },
+            //        }
+            //    }
+            //}
 
-            Ok(())
+            //Ok(())
+            todo!()
         }
 
         #[inline]

@@ -276,28 +276,29 @@ mod dma {
     {
         #[inline]
         fn read(&mut self, mut buffer: &mut [u8]) -> Result<usize, Self::Error> {
-            if buffer.is_empty() {
-                return Ok(0);
-            }
+            //if buffer.is_empty() {
+            //    return Ok(0);
+            //}
 
-            let sercom_ptr = self.sercom_ptr();
-            let channel = self.rx_channel.as_mut();
+            //let sercom_ptr = self.sercom_ptr();
+            //let channel = self.rx_channel.as_mut();
 
-            unsafe {
-                read_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
-            }
+            //unsafe {
+            //    read_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
+            //}
 
-            while !channel.xfer_complete() {
-                core::hint::spin_loop();
-            }
+            //while !channel.xfer_complete() {
+            //    core::hint::spin_loop();
+            //}
 
-            while !self.read_flags().contains(Flags::RXC) {
-                core::hint::spin_loop();
-            }
+            //while !self.read_flags().contains(Flags::RXC) {
+            //    core::hint::spin_loop();
+            //}
 
-            self.read_flags_errors()?;
+            //self.read_flags_errors()?;
 
-            Ok(buffer.len())
+            //Ok(buffer.len())
+            todo!()
         }
     }
 }

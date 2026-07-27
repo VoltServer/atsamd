@@ -128,14 +128,15 @@ where
 
     #[inline]
     pub(super) fn read_dma_master(&mut self, mut words: &mut [C::Word]) -> Result<(), Error> {
-        if words.is_empty() {
-            return Ok(());
-        }
+        //if words.is_empty() {
+        //    return Ok(());
+        //}
 
-        let mut source_word = self.config.nop_word.as_();
-        let mut source = SinkSourceBuffer::new(&mut source_word, words.len());
+        //let mut source_word = self.config.nop_word.as_();
+        //let mut source = SinkSourceBuffer::new(&mut source_word, words.len());
 
-        self.transfer_blocking(&mut words, &mut source)
+        //self.transfer_blocking(&mut words, &mut source)
+        todo!()
     }
 }
 
@@ -165,105 +166,106 @@ where
 
     #[inline]
     fn transfer(&mut self, mut read: &mut [C::Word], write: &[C::Word]) -> Result<(), Self::Error> {
-        use core::cmp::Ordering;
+        //use core::cmp::Ordering;
 
-        // No work to do here
-        if write.is_empty() && read.is_empty() {
-            return Ok(());
-        }
+        //// No work to do here
+        //if write.is_empty() && read.is_empty() {
+        //    return Ok(());
+        //}
 
-        // Handle 0-length special cases
-        if write.is_empty() {
-            return self.read_dma_master(read);
-        } else if read.is_empty() {
-            self.write_dma(write)?;
-            return Ok(());
-        }
+        //// Handle 0-length special cases
+        //if write.is_empty() {
+        //    return self.read_dma_master(read);
+        //} else if read.is_empty() {
+        //    self.write_dma(write)?;
+        //    return Ok(());
+        //}
 
-        // Reserve space for a DMAC SRAM descriptor if we need to make a linked
-        // transfer. Must not be dropped until all transfers have completed
-        // or have been stopped.
-        let mut linked_descriptor = DmacDescriptor::default();
+        //// Reserve space for a DMAC SRAM descriptor if we need to make a linked
+        //// transfer. Must not be dropped until all transfers have completed
+        //// or have been stopped.
+        //let mut linked_descriptor = DmacDescriptor::default();
 
-        // If read < write, the incoming words will be written to this memory location;
-        // it will be discarded after. If read > write, all writes after the
-        // buffer has been exhausted will write the nop word to "stimulate" the slave
-        // into sending data. Must not be dropped until all transfers have
-        // completed or have been stopped.
-        let mut source_sink_word = self.config.nop_word.as_();
-        let mut sercom_ptr = self.sercom_ptr();
+        //// If read < write, the incoming words will be written to this memory location;
+        //// it will be discarded after. If read > write, all writes after the
+        //// buffer has been exhausted will write the nop word to "stimulate" the slave
+        //// into sending data. Must not be dropped until all transfers have
+        //// completed or have been stopped.
+        //let mut source_sink_word = self.config.nop_word.as_();
+        //let mut sercom_ptr = self.sercom_ptr();
 
-        let (read_link, write_link) = match read.len().cmp(&write.len()) {
-            Ordering::Equal => {
-                let mut write = SharedSliceBuffer::from_slice(write);
-                return self.transfer_blocking(&mut read, &mut write);
-            }
+        //let (read_link, write_link) = match read.len().cmp(&write.len()) {
+        //    Ordering::Equal => {
+        //        let mut write = SharedSliceBuffer::from_slice(write);
+        //        return self.transfer_blocking(&mut read, &mut write);
+        //    }
 
-            // `read` is shorter; link transfer to sink incoming words after the buffer has been
-            // filled.
-            Ordering::Less => {
-                let mut sink =
-                    SinkSourceBuffer::new(&mut source_sink_word, write.len() - read.len());
-                unsafe {
-                    channel::write_descriptor(
-                        &mut linked_descriptor,
-                        &mut sercom_ptr,
-                        &mut sink,
-                        // Add a null descriptor pointer to end the transfer.
-                        core::ptr::null_mut(),
-                    );
-                }
+        //    // `read` is shorter; link transfer to sink incoming words after the buffer has been
+        //    // filled.
+        //    Ordering::Less => {
+        //        let mut sink =
+        //            SinkSourceBuffer::new(&mut source_sink_word, write.len() - read.len());
+        //        unsafe {
+        //            channel::write_descriptor(
+        //                &mut linked_descriptor,
+        //                &mut sercom_ptr,
+        //                &mut sink,
+        //                // Add a null descriptor pointer to end the transfer.
+        //                core::ptr::null_mut(),
+        //            );
+        //        }
 
-                (Some(&mut linked_descriptor), None)
-            }
+        //        (Some(&mut linked_descriptor), None)
+        //    }
 
-            // `write` is shorter; link transfer to send NOP word after the buffer has been
-            // exhausted.
-            Ordering::Greater => {
-                let mut source =
-                    SinkSourceBuffer::new(&mut source_sink_word, read.len() - write.len());
-                unsafe {
-                    channel::write_descriptor(
-                        &mut linked_descriptor,
-                        &mut source,
-                        &mut sercom_ptr,
-                        // Add a null descriptor pointer to end the transfer.
-                        core::ptr::null_mut(),
-                    );
-                }
+        //    // `write` is shorter; link transfer to send NOP word after the buffer has been
+        //    // exhausted.
+        //    Ordering::Greater => {
+        //        let mut source =
+        //            SinkSourceBuffer::new(&mut source_sink_word, read.len() - write.len());
+        //        unsafe {
+        //            channel::write_descriptor(
+        //                &mut linked_descriptor,
+        //                &mut source,
+        //                &mut sercom_ptr,
+        //                // Add a null descriptor pointer to end the transfer.
+        //                core::ptr::null_mut(),
+        //            );
+        //        }
 
-                (None, Some(&mut linked_descriptor))
-            }
-        };
+        //        (None, Some(&mut linked_descriptor))
+        //    }
+        //};
 
-        let rx = self._rx_channel.as_mut();
-        let tx = self._tx_channel.as_mut();
+        //let rx = self._rx_channel.as_mut();
+        //let tx = self._tx_channel.as_mut();
 
-        let mut write = SharedSliceBuffer::from_slice(write);
+        //let mut write = SharedSliceBuffer::from_slice(write);
 
-        // SAFETY: We make sure that any DMA transfer is complete or stopped before
-        // returning. The order of operations is important; the RX transfer
-        // must be ready to receive before the TX transfer is initiated.
-        unsafe {
-            read_dma_linked::<_, _, S>(rx, sercom_ptr.clone(), &mut read, read_link);
-            write_dma_linked::<_, _, S>(tx, sercom_ptr, &mut write, write_link);
-        }
+        //// SAFETY: We make sure that any DMA transfer is complete or stopped before
+        //// returning. The order of operations is important; the RX transfer
+        //// must be ready to receive before the TX transfer is initiated.
+        //unsafe {
+        //    read_dma_linked::<_, _, S>(rx, sercom_ptr.clone(), &mut read, read_link);
+        //    write_dma_linked::<_, _, S>(tx, sercom_ptr, &mut write, write_link);
+        //}
 
-        while !(rx.xfer_complete() && tx.xfer_complete()) {
-            core::hint::spin_loop();
-        }
+        //while !(rx.xfer_complete() && tx.xfer_complete()) {
+        //    core::hint::spin_loop();
+        //}
 
-        // Defensively disable channels
-        tx.stop();
-        rx.stop();
+        //// Defensively disable channels
+        //tx.stop();
+        //rx.stop();
 
-        // Check for overflows or DMA errors
-        self.read_status().check_bus_error()?;
-        self._rx_channel
-            .as_mut()
-            .xfer_success()
-            .and(self._tx_channel.as_mut().xfer_success())?;
-        Ok(())
+        //// Check for overflows or DMA errors
+        //self.read_status().check_bus_error()?;
+        //self._rx_channel
+        //    .as_mut()
+        //    .xfer_success()
+        //    .and(self._tx_channel.as_mut().xfer_success())?;
+        //Ok(())
+        todo!()
     }
 
     #[inline]
@@ -342,33 +344,34 @@ where
     R: AnyChannel<Status = Ready>,
 {
     fn read(&mut self, mut buf: &mut [u8]) -> Result<usize, Self::Error> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
+        //if buf.is_empty() {
+        //    return Ok(0);
+        //}
 
-        // In Slave mode, RX words can come in even if we haven't sent anything. This
-        // means some words can arrive asynchronously while we weren't looking (similar
-        // to UART RX). We need to check if we haven't missed any.
-        self.flush_rx()?;
-        let sercom_ptr = self.sercom_ptr();
-        let rx = self._rx_channel.as_mut();
+        //// In Slave mode, RX words can come in even if we haven't sent anything. This
+        //// means some words can arrive asynchronously while we weren't looking (similar
+        //// to UART RX). We need to check if we haven't missed any.
+        //self.flush_rx()?;
+        //let sercom_ptr = self.sercom_ptr();
+        //let rx = self._rx_channel.as_mut();
 
-        // SAFETY: We make sure that any DMA transfer is complete or stopped before
-        // returning.
-        unsafe {
-            read_dma::<_, _, S>(rx, sercom_ptr.clone(), &mut buf);
-        }
+        //// SAFETY: We make sure that any DMA transfer is complete or stopped before
+        //// returning.
+        //unsafe {
+        //    read_dma::<_, _, S>(rx, sercom_ptr.clone(), &mut buf);
+        //}
 
-        while !(rx.xfer_complete()) {
-            core::hint::spin_loop();
-        }
+        //while !(rx.xfer_complete()) {
+        //    core::hint::spin_loop();
+        //}
 
-        // Defensively disable channel
-        rx.stop();
+        //// Defensively disable channel
+        //rx.stop();
 
-        // Check for overflows or DMA errors
-        self.read_status().check_bus_error()?;
-        self._rx_channel.as_mut().xfer_success()?;
-        Ok(buf.len())
+        //// Check for overflows or DMA errors
+        //self.read_status().check_bus_error()?;
+        //self._rx_channel.as_mut().xfer_success()?;
+        //Ok(buf.len())
+        todo!()
     }
 }
