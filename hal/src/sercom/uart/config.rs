@@ -432,7 +432,7 @@ where
 pub trait AnyConfig: Sealed + Is<Type = SpecificConfig<Self>> {
     type Sercom: Sercom;
     type Pads: ValidPads<Sercom = Self::Sercom>;
-    type Word: 'static + PrimInt + AsPrimitive<DataReg>;
+    type Word: 'static + PrimInt + AsPrimitive<DataReg> + voltserver_hal::dma::Word;
     type CharSize: CharSize<Word = Self::Word>;
 }
 

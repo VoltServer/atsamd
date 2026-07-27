@@ -56,13 +56,7 @@ impl<'a, T: Beat> SharedSliceBuffer<'a, T> {
 }
 
 impl<T: Beat> voltserver_hal::dma::Buffer<T> for SharedSliceBuffer<'_, T> {
-    type Output = [T];
-    fn as_ref<'a>(&'a self) -> &'a [T] {
-        unsafe {
-            let len = self.ptrs.end.offset_from(self.ptrs.start) as usize;
-            core::slice::from_raw_parts(self.ptrs.start, len)
-        }
-    }
+    type Contents = [T];
 }
 
 unsafe impl<T: Beat> Buffer for SharedSliceBuffer<'_, T> {
@@ -108,10 +102,7 @@ impl<'a, T: Beat> SinkSourceBuffer<'a, T> {
 }
 
 impl<T: Beat> voltserver_hal::dma::Buffer<T> for SinkSourceBuffer<'_, T> {
-    type Output = [T];
-    fn as_ref<'a>(&'a self) -> &'a Self::Output {
-        unsafe { core::slice::from_raw_parts(self.word as *const _, self.length) }
-    }
+    type Contents = [T];
 }
 
 unsafe impl<T: Beat> Buffer for SinkSourceBuffer<'_, T> {
@@ -139,10 +130,7 @@ unsafe impl<T: Beat> Buffer for SinkSourceBuffer<'_, T> {
 pub(crate) struct SercomPtr<T: Beat>(pub(in super::super) *mut T);
 
 impl<T: Beat> voltserver_hal::dma::Buffer<T> for SercomPtr<T> {
-    type Output = T;
-    fn as_ref<'a>(&'a self) -> &'a Self::Output {
-        todo!()
-    }
+    type Contents = [T; 1];
 }
 
 unsafe impl<T: Beat> Buffer for SercomPtr<T> {
@@ -173,12 +161,7 @@ where
     C::Word: Beat,
     D: uart::Capability,
 {
-    type Output = C::Word;
-    fn as_ref<'a>(&'a self) -> &'a Self::Output {
-        //SAFETY: this is always safe as the UART data register is implemented in hardware
-        // and therefore will always be valid
-        unsafe { &*self.data_ptr() }
-    }
+    type Contents = [C::Word; 1];
 }
 
 unsafe impl<C, D> Buffer for Uart<C, D>
@@ -205,9 +188,23 @@ where
     }
 }
 
+impl<C, D> voltserver_hal::dma::SrcBuffer<C::Word> for Uart<C, D>
+where
+    C: uart::ValidConfig,
+    C::Word: Beat,
+    D: uart::Capability,
+{}
+
+impl<C, D> voltserver_hal::dma::DstBuffer<C::Word> for Uart<C, D>
+where
+    C: uart::ValidConfig,
+    C::Word: Beat,
+    D: uart::Capability,
+{}
+
 impl<C, D> Uart<C, D>
 where
-    Self: Buffer<Beat = C::Word>,
+    Self: Buffer<Beat = C::Word> + voltserver_hal::dma::SrcBuffer<C::Word>,
     C: uart::ValidConfig,
     D: uart::Receive,
 {
@@ -228,7 +225,7 @@ where
     ) -> Transfer<Channel<Ch::Id, Busy>, BufferPair<Self, B>>
     where
         Ch: AnyChannel<Status = Ready>,
-        B: Buffer<Beat = C::Word> + 'static,
+        B: Buffer<Beat = C::Word> + voltserver_hal::dma::DstBuffer<C::Word> + 'static,
     {
         channel
             .as_mut()
@@ -249,7 +246,7 @@ where
 
 impl<C, D> Uart<C, D>
 where
-    Self: Buffer<Beat = C::Word>,
+    Self: Buffer<Beat = C::Word> + voltserver_hal::dma::DstBuffer<C::Word>,
     C: uart::ValidConfig,
     D: uart::Transmit,
 {
@@ -270,7 +267,7 @@ where
     ) -> Transfer<Channel<Ch::Id, Busy>, BufferPair<B, Self>>
     where
         Ch: AnyChannel<Status = Ready>,
-        B: Buffer<Beat = C::Word> + 'static,
+        B: Buffer<Beat = C::Word> + voltserver_hal::dma::SrcBuffer<C::Word> + 'static,
     {
         channel
             .as_mut()
