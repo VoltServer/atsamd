@@ -114,7 +114,7 @@ pub enum BeatSize {
 ///
 /// This trait should not be implemented outside of the crate-provided
 /// implementations
-pub unsafe trait Beat: Sealed {
+pub unsafe trait Beat: Sealed + voltserver_hal::dma::Word {
     /// Convert to BeatSize enum
     const BEATSIZE: BeatSize;
 }
@@ -165,7 +165,7 @@ pub unsafe trait Buffer: DmaBuffer<Self::Beat> {
     fn buffer_len(&self) -> usize;
 }
 
-unsafe impl<T: Beat, const N: usize> Buffer for &mut [T; N] {
+unsafe impl<T: Beat, const N: usize> Buffer for &'static mut [T; N] {
     type Beat = T;
     #[inline]
     fn dma_ptr(&mut self) -> *mut Self::Beat {
@@ -187,47 +187,47 @@ unsafe impl<T: Beat, const N: usize> Buffer for &mut [T; N] {
         N
     }
 }
-
-unsafe impl<T: Beat> Buffer for &mut [T] {
-    type Beat = T;
-    #[inline]
-    fn dma_ptr(&mut self) -> *mut Self::Beat {
-        let ptrs = self.as_mut_ptr_range();
-        if self.incrementing() {
-            ptrs.end
-        } else {
-            ptrs.start
-        }
-    }
-
-    #[inline]
-    fn incrementing(&self) -> bool {
-        self.len() > 1
-    }
-
-    #[inline]
-    fn buffer_len(&self) -> usize {
-        self.len()
-    }
-}
-
-unsafe impl<T: Beat> Buffer for &mut T {
-    type Beat = T;
-    #[inline]
-    fn dma_ptr(&mut self) -> *mut Self::Beat {
-        *self as *mut T
-    }
-
-    #[inline]
-    fn incrementing(&self) -> bool {
-        false
-    }
-
-    #[inline]
-    fn buffer_len(&self) -> usize {
-        1
-    }
-}
+//
+//unsafe impl<T: Beat> Buffer for &mut [T] {
+//    type Beat = T;
+//    #[inline]
+//    fn dma_ptr(&mut self) -> *mut Self::Beat {
+//        let ptrs = self.as_mut_ptr_range();
+//        if self.incrementing() {
+//            ptrs.end
+//        } else {
+//            ptrs.start
+//        }
+//    }
+//
+//    #[inline]
+//    fn incrementing(&self) -> bool {
+//        self.len() > 1
+//    }
+//
+//    #[inline]
+//    fn buffer_len(&self) -> usize {
+//        self.len()
+//    }
+//}
+//
+//unsafe impl<T: Beat> Buffer for &mut T {
+//    type Beat = T;
+//    #[inline]
+//    fn dma_ptr(&mut self) -> *mut Self::Beat {
+//        *self as *mut T
+//    }
+//
+//    #[inline]
+//    fn incrementing(&self) -> bool {
+//        false
+//    }
+//
+//    #[inline]
+//    fn buffer_len(&self) -> usize {
+//        1
+//    }
+//}
 
 //==============================================================================
 // BufferPair
@@ -237,8 +237,8 @@ unsafe impl<T: Beat> Buffer for &mut T {
 /// [`Transfer`].
 pub struct BufferPair<S, D = S>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
 {
     /// Source buffer
     pub source: S,
@@ -251,8 +251,8 @@ where
 //==============================================================================
 
 pub trait AnyBufferPair: Sealed + Is<Type = SpecificBufferPair<Self>> {
-    type Src: Buffer;
-    type Dst: Buffer<Beat = BufferPairBeat<Self>>;
+    type Src: Buffer + voltserver_hal::dma::SrcBuffer<BufferPairBeat<Self>>;
+    type Dst: Buffer<Beat = BufferPairBeat<Self>> + voltserver_hal::dma::DstBuffer<BufferPairBeat<Self>>;
 }
 
 pub type SpecificBufferPair<C> = BufferPair<<C as AnyBufferPair>::Src, <C as AnyBufferPair>::Dst>;
@@ -263,15 +263,15 @@ pub type BufferPairBeat<B> = <BufferPairSrc<B> as Buffer>::Beat;
 
 impl<S, D> Sealed for BufferPair<S, D>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
 {
 }
 
 impl<S, D> AnyBufferPair for BufferPair<S, D>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
 {
     type Src = S;
     type Dst = D;
@@ -279,8 +279,8 @@ where
 
 impl<S, D> AsRef<Self> for BufferPair<S, D>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
 {
     #[inline]
     fn as_ref(&self) -> &Self {
@@ -290,8 +290,8 @@ where
 
 impl<S, D> AsMut<Self> for BufferPair<S, D>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
 {
     #[inline]
     fn as_mut(&mut self) -> &mut Self {
@@ -316,8 +316,8 @@ where
 
 impl<C, S, D, R> Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer + 'static,
-    D: Buffer<Beat = S::Beat> + 'static,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat> + 'static,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat> + 'static,
     C: AnyChannel<Status = R>,
     R: ReadyChannel,
 {
@@ -356,8 +356,8 @@ where
 
 impl<S, D, C> Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<S::Beat>,
     C: AnyChannel,
 {
     #[inline]
@@ -377,8 +377,8 @@ where
 
 impl<C, S, D, R> Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     C: AnyChannel<Status = R>,
     R: ReadyChannel,
 {
@@ -432,8 +432,8 @@ where
 
 impl<C, S, D> Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     C: AnyChannel<Status = Ready>,
 {
     /// Begin DMA transfer in blocking mode. If [`TriggerSource::Disable`] is
@@ -501,8 +501,8 @@ where
 
 impl<S, D, C> Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     C: AnyChannel<Status = Busy>,
 {
     /// Issue a software trigger request to the corresponding channel.
@@ -667,8 +667,8 @@ where
 //==============================================================================
 impl<Chan, S, D> voltserver_hal::dma::Transfer for Transfer<Chan, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     Chan: AnyChannel,
 {
     type Error = super::Error;
@@ -688,8 +688,8 @@ where
 
 impl<C, S, D> voltserver_hal::dma::ReadyTransfer for Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     C: AnyChannel<Status = Ready>,
 {
     type Busy = Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>>;
@@ -701,8 +701,8 @@ where
 
 impl <C, S, D> voltserver_hal::dma::BusyTransfer for Transfer<C, BufferPair<S, D>>
 where
-    S: Buffer,
-    D: Buffer<Beat = S::Beat>,
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     C: AnyChannel<Status = Busy>,
 {
     type Ready = Transfer<Channel<ChannelId<C>, Ready>, BufferPair<S, D>>;

@@ -522,8 +522,8 @@ impl<Id: ChId> Channel<Id, Ready> {
         linked_descriptor: Option<&mut DmacDescriptor>,
     ) -> Result<(), Error>
     where
-        S: Buffer,
-        D: Buffer<Beat = S::Beat>,
+        S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+        D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     {
         Transfer::<Self, BufferPair<S, D>>::check_buffer_pair(source, dest)?;
         unsafe {
