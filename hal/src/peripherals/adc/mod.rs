@@ -43,8 +43,13 @@ mod async_api;
 #[cfg(feature = "async")]
 pub use async_api::*;
 
+mod capture;
+pub use capture::*;
+
 mod builder;
 pub use builder::*;
+
+mod sample;
 
 #[hal_cfg(any("adc-d11", "adc-d21"))]
 use crate::pac::adc as adc0;
@@ -99,6 +104,12 @@ pub enum Error {
     ClockTooFast,
     /// Buffer overflowed
     BufferOverrun,
+}
+
+impl voltserver_hal::adc::Error for Error {
+    fn kind(&self) -> voltserver_hal::adc::ErrorKind {
+        voltserver_hal::adc::ErrorKind::Other
+    }
 }
 
 bitflags::bitflags! {
