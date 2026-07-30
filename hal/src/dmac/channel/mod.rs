@@ -525,7 +525,7 @@ impl<Id: ChId> Channel<Id, Ready> {
         S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
         D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
     {
-        Transfer::<Self, BufferPair<S, D>>::check_buffer_pair(source, dest)?;
+        Transfer::<BufferPair<S, D>, super::transfer::Ready<Id>>::check_buffer_pair(source, dest)?;
         unsafe {
             self.transfer_unchecked(source, dest, trig_src, trig_act, linked_descriptor);
         }

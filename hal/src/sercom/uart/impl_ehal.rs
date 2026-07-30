@@ -209,96 +209,96 @@ where
     }
 }
 
-#[cfg(feature = "dma")]
-mod dma {
-    use super::*;
-    use crate::{
-        dmac::{AnyChannel, Beat, Ready},
-        sercom::{
-            Sercom,
-            dma::{SercomPtr, SharedSliceBuffer, read_dma, write_dma},
-        },
-    };
-
-    impl<C, D, R, T, W> Uart<C, D, R, T>
-    where
-        C: ValidConfig<Word = W>,
-        D: Capability,
-        W: Beat,
-    {
-        pub(in super::super) fn sercom_ptr(&self) -> SercomPtr<W> {
-            SercomPtr(self.data_ptr())
-        }
-    }
-
-    impl<P, D, R, T, S> embedded_io::Write for Uart<Config<P, EightBit>, D, R, T>
-    where
-        P: ValidPads<Sercom = S>,
-        D: Transmit,
-        T: AnyChannel<Status = Ready>,
-        S: Sercom,
-    {
-        #[inline]
-        fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
-            let sercom_ptr = self.sercom_ptr();
-            let channel = self.tx_channel.as_mut();
-            let mut buffer = SharedSliceBuffer::from_slice(bytes);
-
-            unsafe {
-                write_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
-            }
-
-            while !channel.xfer_complete() {
-                core::hint::spin_loop();
-            }
-
-            while !self.read_flags().contains(Flags::TXC) {
-                core::hint::spin_loop();
-            }
-
-            Ok(bytes.len())
-        }
-
-        /// Wait for a `TXC` flag
-        #[inline]
-        fn flush(&mut self) -> Result<(), Self::Error> {
-            nb::block!(<Self as embedded_hal_nb::serial::Write<u8>>::flush(self))?;
-            Ok(())
-        }
-    }
-
-    impl<P, D, R, T, S> embedded_io::Read for Uart<Config<P, EightBit>, D, R, T>
-    where
-        P: ValidPads<Sercom = S>,
-        D: Receive,
-        R: AnyChannel<Status = Ready>,
-        S: Sercom,
-    {
-        #[inline]
-        fn read(&mut self, mut buffer: &mut [u8]) -> Result<usize, Self::Error> {
-            //if buffer.is_empty() {
-            //    return Ok(0);
-            //}
-
-            //let sercom_ptr = self.sercom_ptr();
-            //let channel = self.rx_channel.as_mut();
-
-            //unsafe {
-            //    read_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
-            //}
-
-            //while !channel.xfer_complete() {
-            //    core::hint::spin_loop();
-            //}
-
-            //while !self.read_flags().contains(Flags::RXC) {
-            //    core::hint::spin_loop();
-            //}
-
-            //self.read_flags_errors()?;
-
-            //Ok(buffer.len())
-            todo!()
-        }
-    }
-}
+//#[cfg(feature = "dma")]
+//mod dma {
+//    use super::*;
+//    use crate::{
+//        dmac::{AnyChannel, Beat, Ready},
+//        sercom::{
+//            Sercom,
+//            dma::{SercomPtr, SharedSliceBuffer, read_dma, write_dma},
+//        },
+//    };
+//
+//    impl<C, D, R, T, W> Uart<C, D, R, T>
+//    where
+//        C: ValidConfig<Word = W>,
+//        D: Capability,
+//        W: Beat,
+//    {
+//        pub(in super::super) fn sercom_ptr(&self) -> SercomPtr<W> {
+//            SercomPtr(self.data_ptr())
+//        }
+//    }
+//
+//    impl<P, D, R, T, S> embedded_io::Write for Uart<Config<P, EightBit>, D, R, T>
+//    where
+//        P: ValidPads<Sercom = S>,
+//        D: Transmit,
+//        T: AnyChannel<Status = Ready>,
+//        S: Sercom,
+//    {
+//        #[inline]
+//        fn write(&mut self, bytes: &[u8]) -> Result<usize, Self::Error> {
+//            let sercom_ptr = self.sercom_ptr();
+//            let channel = self.tx_channel.as_mut();
+//            let mut buffer = SharedSliceBuffer::from_slice(bytes);
+//
+//            unsafe {
+//                write_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
+//            }
+//
+//            while !channel.xfer_complete() {
+//                core::hint::spin_loop();
+//            }
+//
+//            while !self.read_flags().contains(Flags::TXC) {
+//                core::hint::spin_loop();
+//            }
+//
+//            Ok(bytes.len())
+//        }
+//
+//        /// Wait for a `TXC` flag
+//        #[inline]
+//        fn flush(&mut self) -> Result<(), Self::Error> {
+//            nb::block!(<Self as embedded_hal_nb::serial::Write<u8>>::flush(self))?;
+//            Ok(())
+//        }
+//    }
+//
+//    impl<P, D, R, T, S> embedded_io::Read for Uart<Config<P, EightBit>, D, R, T>
+//    where
+//        P: ValidPads<Sercom = S>,
+//        D: Receive,
+//        R: AnyChannel<Status = Ready>,
+//        S: Sercom,
+//    {
+//        #[inline]
+//        fn read(&mut self, mut buffer: &mut [u8]) -> Result<usize, Self::Error> {
+//            //if buffer.is_empty() {
+//            //    return Ok(0);
+//            //}
+//
+//            //let sercom_ptr = self.sercom_ptr();
+//            //let channel = self.rx_channel.as_mut();
+//
+//            //unsafe {
+//            //    read_dma::<_, _, S>(channel, sercom_ptr, &mut buffer);
+//            //}
+//
+//            //while !channel.xfer_complete() {
+//            //    core::hint::spin_loop();
+//            //}
+//
+//            //while !self.read_flags().contains(Flags::RXC) {
+//            //    core::hint::spin_loop();
+//            //}
+//
+//            //self.read_flags_errors()?;
+//
+//            //Ok(buffer.len())
+//            todo!()
+//        }
+//    }
+//}

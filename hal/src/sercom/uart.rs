@@ -965,95 +965,95 @@ where
     }
 }
 
-#[cfg(feature = "dma")]
-impl<C, D, T> Uart<C, D, NoneT, T>
-where
-    C: ValidConfig,
-    D: Capability,
-{
-    /// Attach a DMA channel to this [`Uart`] for RX transactions. Its
-    /// [`Read`](embedded_io::Read) implementation will use DMA to
-    /// carry out its transactions.
-    pub fn with_rx_channel<R: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
-        self,
-        rx_channel: R,
-    ) -> Uart<C, D, R, T> {
-        Uart {
-            config: self.config,
-            capability: self.capability,
-            tx_channel: self.tx_channel,
-            rx_channel,
-        }
-    }
-}
+//#[cfg(feature = "dma")]
+//impl<C, D, T> Uart<C, D, NoneT, T>
+//where
+//    C: ValidConfig,
+//    D: Capability,
+//{
+//    /// Attach a DMA channel to this [`Uart`] for RX transactions. Its
+//    /// [`Read`](embedded_io::Read) implementation will use DMA to
+//    /// carry out its transactions.
+//    pub fn with_rx_channel<R: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
+//        self,
+//        rx_channel: R,
+//    ) -> Uart<C, D, R, T> {
+//        Uart {
+//            config: self.config,
+//            capability: self.capability,
+//            tx_channel: self.tx_channel,
+//            rx_channel,
+//        }
+//    }
+//}
 
-#[cfg(feature = "dma")]
-impl<C, D, R> Uart<C, D, R, NoneT>
-where
-    C: ValidConfig,
-    D: Capability,
-{
-    /// Attach a DMA channel to this [`Uart`] for TX transactions. Its
-    /// [`Write`](embedded_io::Write) implementation will use DMA to
-    /// carry out its transactions.
-    pub fn with_tx_channel<T: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
-        self,
-        tx_channel: T,
-    ) -> Uart<C, D, R, T> {
-        Uart {
-            config: self.config,
-            capability: self.capability,
-            rx_channel: self.rx_channel,
-            tx_channel,
-        }
-    }
-}
+//#[cfg(feature = "dma")]
+//impl<C, D, R> Uart<C, D, R, NoneT>
+//where
+//    C: ValidConfig,
+//    D: Capability,
+//{
+//    /// Attach a DMA channel to this [`Uart`] for TX transactions. Its
+//    /// [`Write`](embedded_io::Write) implementation will use DMA to
+//    /// carry out its transactions.
+//    pub fn with_tx_channel<T: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
+//        self,
+//        tx_channel: T,
+//    ) -> Uart<C, D, R, T> {
+//        Uart {
+//            config: self.config,
+//            capability: self.capability,
+//            rx_channel: self.rx_channel,
+//            tx_channel,
+//        }
+//    }
+//}
 
-#[cfg(feature = "dma")]
-impl<C, D, R, T, S> Uart<C, D, R, T>
-where
-    C: ValidConfig,
-    D: Capability,
-    R: crate::dmac::AnyChannel<Status = S>,
-    S: crate::dmac::ReadyChannel,
-{
-    /// Reclaim the RX DMA channel. Subsequent RX operations will no longer use
-    /// DMA.
-    pub fn take_rx_channel(self) -> (Uart<C, D, NoneT, T>, R) {
-        (
-            Uart {
-                config: self.config,
-                capability: self.capability,
-                tx_channel: self.tx_channel,
-                rx_channel: NoneT,
-            },
-            self.rx_channel,
-        )
-    }
-}
+//#[cfg(feature = "dma")]
+//impl<C, D, R, T, S> Uart<C, D, R, T>
+//where
+//    C: ValidConfig,
+//    D: Capability,
+//    R: crate::dmac::AnyChannel<Status = S>,
+//    S: crate::dmac::ReadyChannel,
+//{
+//    /// Reclaim the RX DMA channel. Subsequent RX operations will no longer use
+//    /// DMA.
+//    pub fn take_rx_channel(self) -> (Uart<C, D, NoneT, T>, R) {
+//        (
+//            Uart {
+//                config: self.config,
+//                capability: self.capability,
+//                tx_channel: self.tx_channel,
+//                rx_channel: NoneT,
+//            },
+//            self.rx_channel,
+//        )
+//    }
+//}
 
-#[cfg(feature = "dma")]
-impl<C, D, R, T, S> Uart<C, D, R, T>
-where
-    C: ValidConfig,
-    D: Capability,
-    T: crate::dmac::AnyChannel<Status = S>,
-    S: crate::dmac::ReadyChannel,
-{
-    /// Reclaim the TX DMA channel. Subsequent TX operations will no longer use
-    /// DMA.
-    pub fn take_tx_channel(self) -> (Uart<C, D, R, NoneT>, T) {
-        (
-            Uart {
-                config: self.config,
-                capability: self.capability,
-                rx_channel: self.rx_channel,
-                tx_channel: NoneT,
-            },
-            self.tx_channel,
-        )
-    }
-}
+//#[cfg(feature = "dma")]
+//impl<C, D, R, T, S> Uart<C, D, R, T>
+//where
+//    C: ValidConfig,
+//    D: Capability,
+//    T: crate::dmac::AnyChannel<Status = S>,
+//    S: crate::dmac::ReadyChannel,
+//{
+//    /// Reclaim the TX DMA channel. Subsequent TX operations will no longer use
+//    /// DMA.
+//    pub fn take_tx_channel(self) -> (Uart<C, D, R, NoneT>, T) {
+//        (
+//            Uart {
+//                config: self.config,
+//                capability: self.capability,
+//                rx_channel: self.rx_channel,
+//                tx_channel: NoneT,
+//            },
+//            self.tx_channel,
+//        )
+//    }
+//}
 
 impl<C, R, T> Uart<C, Duplex, R, T>
 where

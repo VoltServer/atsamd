@@ -453,29 +453,29 @@ impl<C: AnyConfig, D> I2c<C, D> {
         self.config.as_mut().registers.clear_status(status);
     }
 
-    #[cfg(feature = "dma")]
-    #[inline]
-    pub(super) fn start_dma_write(&mut self, address: u8, xfer_len: u8) {
-        self.config
-            .as_mut()
-            .registers
-            .start_dma_write(address, xfer_len)
-    }
+    //#[cfg(feature = "dma")]
+    //#[inline]
+    //pub(super) fn start_dma_write(&mut self, address: u8, xfer_len: u8) {
+    //    self.config
+    //        .as_mut()
+    //        .registers
+    //        .start_dma_write(address, xfer_len)
+    //}
 
-    #[cfg(feature = "dma")]
-    #[inline]
-    pub(super) fn start_dma_read(&mut self, address: u8, xfer_len: u8) {
-        self.config
-            .as_mut()
-            .registers
-            .start_dma_read(address, xfer_len)
-    }
+    //#[cfg(feature = "dma")]
+    //#[inline]
+    //pub(super) fn start_dma_read(&mut self, address: u8, xfer_len: u8) {
+    //    self.config
+    //        .as_mut()
+    //        .registers
+    //        .start_dma_read(address, xfer_len)
+    //}
 
-    #[cfg(feature = "dma")]
-    #[inline]
-    pub(super) fn check_bus_status(&self) -> Result<(), Error> {
-        self.config.as_ref().registers.check_bus_status()
-    }
+    //#[cfg(feature = "dma")]
+    //#[inline]
+    //pub(super) fn check_bus_status(&self) -> Result<(), Error> {
+    //    self.config.as_ref().registers.check_bus_status()
+    //}
 
     #[inline]
     fn do_write(&mut self, addr: u8, bytes: &[u8]) -> Result<(), Error> {
@@ -544,42 +544,42 @@ impl<C: AnyConfig, D> I2c<C, D> {
     }
 }
 
-impl<C: AnyConfig> I2c<C> {
-    /// Attach a DMA channel to this [`I2c`]. Its
-    /// [`embedded_hal::i2c::I2c`](crate::ehal::i2c::I2c) implementation will
-    /// use DMA to carry out its transactions.
-    #[cfg(feature = "dma")]
-    #[inline]
-    pub fn with_dma_channel<Chan: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
-        self,
-        channel: Chan,
-    ) -> I2c<C, Chan> {
-        I2c {
-            config: self.config,
-            _dma_channel: channel,
-        }
-    }
-}
+//impl<C: AnyConfig> I2c<C> {
+//    /// Attach a DMA channel to this [`I2c`]. Its
+//    /// [`embedded_hal::i2c::I2c`](crate::ehal::i2c::I2c) implementation will
+//    /// use DMA to carry out its transactions.
+//    #[cfg(feature = "dma")]
+//    #[inline]
+//    pub fn with_dma_channel<Chan: crate::dmac::AnyChannel<Status = crate::dmac::Ready>>(
+//        self,
+//        channel: Chan,
+//    ) -> I2c<C, Chan> {
+//        I2c {
+//            config: self.config,
+//            _dma_channel: channel,
+//        }
+//    }
+//}
 
-#[cfg(feature = "dma")]
-impl<C, D, S> I2c<C, D>
-where
-    C: AnyConfig,
-    D: crate::dmac::AnyChannel<Status = S>,
-    S: crate::dmac::ReadyChannel,
-{
-    /// Reclaim the DMA channel. Any subsequent I2C operations will no longer
-    /// use DMA.
-    pub fn take_dma_channel(self) -> (I2c<C, crate::typelevel::NoneT>, D) {
-        (
-            I2c {
-                config: self.config,
-                _dma_channel: crate::typelevel::NoneT,
-            },
-            self._dma_channel,
-        )
-    }
-}
+//#[cfg(feature = "dma")]
+//impl<C, D, S> I2c<C, D>
+//where
+//    C: AnyConfig,
+//    D: crate::dmac::AnyChannel<Status = S>,
+//    S: crate::dmac::ReadyChannel,
+//{
+//    /// Reclaim the DMA channel. Any subsequent I2C operations will no longer
+//    /// use DMA.
+//    pub fn take_dma_channel(self) -> (I2c<C, crate::typelevel::NoneT>, D) {
+//        (
+//            I2c {
+//                config: self.config,
+//                _dma_channel: crate::typelevel::NoneT,
+//            },
+//            self._dma_channel,
+//        )
+//    }
+//}
 
 impl<P: PadSet> AsRef<Config<P>> for I2c<Config<P>> {
     #[inline]

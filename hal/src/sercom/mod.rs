@@ -69,8 +69,8 @@ pub mod spi;
 
 pub mod uart;
 
-#[cfg(feature = "dma")]
-pub mod dma;
+//#[cfg(feature = "dma")]
+//pub mod dma;
 
 //==============================================================================
 //  Sercom

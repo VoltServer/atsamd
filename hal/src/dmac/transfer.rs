@@ -83,9 +83,9 @@
 //!   stopped.
 
 use super::{
-    Error, ReadyChannel, Result,
-    channel::{AnyChannel, Busy, Channel, ChannelId, InterruptFlags, Ready},
-    dma_controller::{TriggerAction, TriggerSource},
+    Error, Result,
+    channel::{AnyChannel, Busy as ChBusy, Channel, InterruptFlags, Ready as ChReady},
+    dma_controller::{TriggerAction, TriggerSource, ChId},
 };
 use crate::typelevel::{Is, Sealed};
 use modular_bitfield::prelude::*;
@@ -299,27 +299,46 @@ where
     }
 }
 
+pub trait State {
+    type Chan: AnyChannel;
+}
+
+type StateChannel<St> = <St as State>::Chan;
+
+pub struct Ready<Id: ChId> (pub Channel<Id, ChReady>);
+pub struct Busy<Id: ChId> (pub Channel<Id, ChBusy>);
+pub struct Complete<Id: ChId> (pub Channel<Id, ChReady>);
+
+impl<Id: ChId> State for Ready<Id> {
+    type Chan = Channel<Id, ChReady>;
+}
+impl<Id: ChId> State for Busy<Id> {
+    type Chan = Channel<Id, ChBusy>;
+}
+impl<Id: ChId> State for Complete<Id> {
+    type Chan = Channel<Id, ChReady>;
+}
+
 // TODO change source and dest types to Pin? (see https://docs.rust-embedded.org/embedonomicon/dma.html#immovable-buffers)
 /// DMA transfer, owning the resources until the transfer is done and
 /// [`Transfer::wait`] is called.
-pub struct Transfer<Chan, Buf>
+pub struct Transfer<Buf, St>
 where
     Buf: AnyBufferPair,
-    Chan: AnyChannel,
+    St: State,
 {
-    chan: Chan,
+    state: St,
     buffers: Buf,
     complete: bool,
     trig_src: TriggerSource,
     trig_act: TriggerAction,
 }
 
-impl<C, S, D, R> Transfer<C, BufferPair<S, D>>
+impl<S, D, Id> Transfer<BufferPair<S, D>, Ready<Id>>
 where
     S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat> + 'static,
     D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat> + 'static,
-    C: AnyChannel<Status = R>,
-    R: ReadyChannel,
+    Id: ChId,
 {
     /// Safely construct a new `Transfer`. To guarantee memory safety, both
     /// buffers are required to be `'static`.
@@ -339,13 +358,13 @@ where
     #[allow(clippy::new_ret_no_self)]
     #[inline]
     pub fn new(
-        chan: C,
+        chan: StateChannel<Ready<Id>>,
         source: S,
         destination: D,
         circular: bool,
         trig_src: TriggerSource,
         trig_act: TriggerAction,
-    ) -> Result<Transfer<C, BufferPair<S, D>>> {
+    ) -> Result<Transfer<BufferPair<S, D>, Ready<Id>>> {
         Self::check_buffer_pair(&source, &destination)?;
 
         // SAFETY: The safety checks are done by the function signature and the buffer
@@ -354,11 +373,11 @@ where
     }
 }
 
-impl<S, D, C> Transfer<C, BufferPair<S, D>>
+impl<S, D, St> Transfer<BufferPair<S, D>, St>
 where
     S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
     D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<S::Beat>,
-    C: AnyChannel,
+    St: State,
 {
     #[inline]
     pub(super) fn check_buffer_pair(source: &S, destination: &D) -> Result<()> {
@@ -375,12 +394,11 @@ where
     }
 }
 
-impl<C, S, D, R> Transfer<C, BufferPair<S, D>>
+impl<S, D, Id> Transfer<BufferPair<S, D>, Ready<Id>>
 where
     S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
     D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    C: AnyChannel<Status = R>,
-    R: ReadyChannel,
+    Id: ChId,
 {
     /// Construct a new `Transfer` without checking for memory safety.
     ///
@@ -401,13 +419,13 @@ where
     ///   equal to `u16::MAX`.
     #[inline]
     pub unsafe fn new_unchecked(
-        mut chan: C,
+        mut chan: StateChannel<Ready<Id>>,
         mut source: S,
         mut destination: D,
         circular: bool,
         trig_src: TriggerSource,
         trig_act: TriggerAction,
-    ) -> Transfer<C, BufferPair<S, D>> {
+    ) -> Transfer<BufferPair<S, D>, Ready<Id>> {
         unsafe {
             chan.as_mut()
                 .fill_descriptor(&mut source, &mut destination, circular);
@@ -419,8 +437,8 @@ where
         };
 
         Transfer {
+            state: Ready(chan),
             buffers,
-            chan,
             complete: false,
             trig_src,
             trig_act,
@@ -430,11 +448,11 @@ where
 
 
 
-impl<C, S, D> Transfer<C, BufferPair<S, D>>
+impl<S, D, Id> Transfer<BufferPair<S, D>, Ready<Id>>
 where
     S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
     D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    C: AnyChannel<Status = Ready>,
+    Id: ChId,
 {
     /// Begin DMA transfer in blocking mode. If [`TriggerSource::Disable`] is
     /// used, a software trigger will be issued to the DMA channel to launch
@@ -443,17 +461,17 @@ where
     #[inline]
     pub fn begin(
         mut self,
-    ) -> Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>> {
+    ) -> Transfer<BufferPair<S, D>, Busy<Id>> {
         // Reset the complete flag before triggering the transfer.
         // This way an interrupt handler could set complete to true
         // before this function returns.
         self.complete = false;
 
-        let chan = self.chan.into().start(self.trig_src, self.trig_act);
+        let chan = self.state.0.start(self.trig_src, self.trig_act);
 
         Transfer {
+            state: Busy(chan),
             buffers: self.buffers,
-            chan,
             complete: self.complete,
             trig_src: self.trig_src,
             trig_act: self.trig_act,
@@ -465,20 +483,19 @@ where
     /// Similar to [`stop`](Transfer::stop), but it acts on a [`Transfer`]
     /// holding a [`Ready`] channel, so there is no need to explicitly stop the
     /// transfer.
-    pub fn free(self) -> (Channel<ChannelId<C>, Ready>, S, D) {
+    pub fn free(self) -> (Channel<Id, ChReady>, S, D) {
         (
-            self.chan.into(),
+            self.state.0.into(),
             self.buffers.source,
             self.buffers.destination,
         )
     }
 }
 
-impl<B, C, R, const N: usize> Transfer<C, BufferPair<&'static mut [B; N]>>
+impl<B, Id, const N: usize> Transfer<BufferPair<&'static mut [B; N]>, Ready<Id>>
 where
     B: 'static + Beat,
-    C: AnyChannel<Status = R>,
-    R: ReadyChannel,
+    Id: ChId,
 {
     /// Create a new `Transfer` from static array references of the same type
     /// and length. When two array references are available (instead of slice
@@ -488,7 +505,7 @@ where
     /// saves some runtime checking of the array lengths.
     #[inline]
     pub fn new_from_arrays(
-        chan: C,
+        chan: StateChannel<Ready<Id>>,
         source: &'static mut [B; N],
         destination: &'static mut [B; N],
         circular: bool,
@@ -499,18 +516,18 @@ where
     }
 }
 
-impl<S, D, C> Transfer<C, BufferPair<S, D>>
+impl<S, D, Id> Transfer<BufferPair<S, D>, Busy<Id>>
 where
     S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
     D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    C: AnyChannel<Status = Busy>,
+    Id: ChId,
 {
     /// Issue a software trigger request to the corresponding channel.
     /// Note that is not guaranteed that the trigger request will register,
     /// if a trigger request is already pending for the channel.
     #[inline]
-    fn software_trigger(&mut self) {
-        self.chan.as_mut().software_trigger();
+    pub fn software_trigger(&mut self) {
+        self.state.0.as_mut().software_trigger();
     }
 
     /// Unsafely and mutably borrow the source buffer
@@ -539,12 +556,11 @@ where
         &mut self.buffers.destination
     }
 
-    /// Wait for the DMA transfer to complete and release all owned
-    /// resources
+    /// Wait for the DMA transfer to complete
     ///
     /// # Blocking: This method may block
     #[inline]
-    pub fn wait(mut self) -> (Channel<ChannelId<C>, Ready>, S, D) {
+    pub fn wait(mut self) -> Transfer<BufferPair<S, D>, Complete<Id>> {
         // Wait for transfer to complete
         while !self.complete() {}
         self.stop()
@@ -552,9 +568,9 @@ where
 
     /// Check if the transfer has completed
     #[inline]
-    fn complete(&mut self) -> bool {
+    pub fn complete(&mut self) -> bool {
         if !self.complete {
-            let chan = self.chan.as_mut();
+            let chan = self.state.0.as_mut();
             let complete = chan.xfer_complete();
             self.complete = complete;
         }
@@ -564,163 +580,182 @@ where
     /// Checks and clears the block transfer complete interrupt flag
     #[inline]
     pub fn block_transfer_interrupt(&mut self) -> bool {
-        self.chan
+        self.state.0
             .as_mut()
             .check_and_clear_interrupts(InterruptFlags::new().with_tcmpl(true))
             .tcmpl()
     }
 
-    /// Modify a completed transfer with new `source` and `destination`, then
-    /// restart.
+    /// Non-blocking; Immediately stop the DMA transfer
+    #[inline]
+    pub fn stop(self) -> Transfer<BufferPair<S, D>, Complete<Id>> {
+        // `free()` stops the transfer, waits for the burst to finish, and emits a
+        // compiler fence.
+        let chan = self.state.0.free();
+
+        Transfer {
+            state: Complete(chan),
+            buffers: self.buffers,
+            complete: true,
+            trig_src: self.trig_src,
+            trig_act: self.trig_act,
+        }
+    }
+}
+
+impl<S, D, Id> Transfer<BufferPair<S, D>, Complete<Id>>
+where
+    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
+    Id: ChId,
+{
+    /// Mutably borrow the source buffer
+    pub(crate) fn borrow_source(&mut self) -> &mut S {
+        &mut self.buffers.source
+    }
+
+    /// Mutable borrow the destination buffer
+    pub(crate) fn borrow_destination(&mut self) -> &mut D {
+        &mut self.buffers.destination
+    }
+
+    /// Modify a completed transfer with new `source` and `destination` then restart.
     ///
     /// Returns a Result containing the source and destination from the
     /// completed transfer. Returns `Err(_)` if the buffer lengths are
-    /// mismatched or if the previous transfer has not yet completed.
+    /// mismatched.
     #[inline]
-    pub fn recycle(&mut self, mut source: S, mut destination: D) -> Result<(S, D)> {
+    pub fn recycle(self, source: S, destination: D) -> Result<(Transfer<BufferPair<S, D>, Busy<Id>>, S, D)> {
+        let trig_src = self.trig_src;
+        let trig_act = self.trig_act;
+        let (chan, old_source, old_destination) = self.free();
+
         Self::check_buffer_pair(&source, &destination)?;
 
-        if !self.complete() {
-            return Err(Error::InvalidState);
-        }
+        //// Circular transfers won't ever complete, so never recyle as one
+        let new_transfer = unsafe{ Transfer::<BufferPair<S, D>, Ready<Id>>::new_unchecked(chan, source, destination, false, trig_src, trig_act) };
 
-        // Circular transfers won't ever complete, so never re-fill as one
-        unsafe {
-            self.chan
-                .as_mut()
-                .fill_descriptor(&mut source, &mut destination, false);
-        }
-
-        let new_buffers = BufferPair {
-            source,
-            destination,
-        };
-
-        let old_buffers = core::mem::replace(&mut self.buffers, new_buffers);
-        self.chan.as_mut().restart();
-        Ok((old_buffers.source, old_buffers.destination))
+        Ok((new_transfer.begin(), old_source, old_destination))
     }
 
-    /// Modify a completed transfer with a new `destination`, then restart.
+    /// Modify a completed transfer with a new `destination` then restart.
     ///
     /// Returns a Result containing the destination from the
     /// completed transfer. Returns `Err(_)` if the buffer lengths are
-    /// mismatched or if the previous transfer has not yet completed.
+    /// mismatched.
     #[inline]
-    pub fn recycle_source(&mut self, mut destination: D) -> Result<D> {
-        Self::check_buffer_pair(&self.buffers.source, &destination)?;
+    pub fn recycle_source(self, destination: D) -> Result<(Transfer<BufferPair<S, D>, Busy<Id>>, D)> {
+        let trig_src = self.trig_src;
+        let trig_act = self.trig_act;
+        let (chan, old_source, old_destination) = self.free();
 
-        if !self.complete() {
-            return Err(Error::InvalidState);
-        }
+        Self::check_buffer_pair(&old_source, &destination)?;
 
         // Circular transfers won't ever complete, so never re-fill as one
-        unsafe {
-            self.chan
-                .as_mut()
-                .fill_descriptor(&mut self.buffers.source, &mut destination, false);
-        }
+        let new_transfer = unsafe{ Transfer::<BufferPair<S, D>, Ready<Id>>::new_unchecked(chan, old_source, destination, false, trig_src, trig_act) };
 
-        let old_destination = core::mem::replace(&mut self.buffers.destination, destination);
-        self.chan.as_mut().restart();
-        Ok(old_destination)
+        Ok((new_transfer.begin(), old_destination))
     }
 
     /// Modify a completed transfer with a new `source`, then restart.
     ///
     /// Returns a Result containing the source from the
     /// completed transfer. Returns `Err(_)` if the buffer lengths are
-    /// mismatched or if the previous transfer has not yet completed.
+    /// mismatched.
     #[inline]
-    pub fn recycle_destination(&mut self, mut source: S) -> Result<S> {
-        Self::check_buffer_pair(&source, &self.buffers.destination)?;
+    pub fn recycle_destination(self, source: S) -> Result<(Transfer<BufferPair<S, D>, Busy<Id>>, S)> {
+        let trig_src = self.trig_src;
+        let trig_act = self.trig_act;
+        let (chan, old_source, old_destination) = self.free();
 
-        if !self.complete() {
-            return Err(Error::InvalidState);
-        }
+        Self::check_buffer_pair(&source, &old_destination)?;
 
         // Circular transfers won't ever complete, so never re-fill as one
-        unsafe {
-            self.chan
-                .as_mut()
-                .fill_descriptor(&mut source, &mut self.buffers.destination, false);
-        }
+        let new_transfer = unsafe{ Transfer::<BufferPair<S, D>, Ready<Id>>::new_unchecked(chan, source, old_destination, false, trig_src, trig_act) };
 
-        let old_source = core::mem::replace(&mut self.buffers.source, source);
-        self.chan.as_mut().restart();
-        Ok(old_source)
+        Ok((new_transfer.begin(), old_source))
     }
 
-    /// Non-blocking; Immediately stop the DMA transfer and release all owned
-    /// resources
+    /// Reset a completed transfer into a ready transfer using the same buffers
+    pub fn reset(self) -> Transfer<BufferPair<S, D>, Ready<Id>> {
+        let trig_src = self.trig_src;
+        let trig_act = self.trig_act;
+        let (chan, source, destination) = self.free();
+
+        // Always safe since we're using the same buffers
+        unsafe { Transfer::<BufferPair<S, D>, Ready<Id>>::new_unchecked(chan, source, destination, false, trig_src, trig_act) }
+    }
+
+    /// Release all owned resources
     #[inline]
-    pub fn stop(self) -> (Channel<ChannelId<C>, Ready>, S, D) {
-        // `free()` stops the transfer, waits for the burst to finish, and emits a
-        // compiler fence.
-        let chan = self.chan.into().free();
-        (chan, self.buffers.source, self.buffers.destination)
+    pub fn free(self) -> (Channel<Id, ChReady>, S, D) {
+        (
+            self.state.0,
+            self.buffers.source,
+            self.buffers.destination,
+        )
     }
 }
 
 //==============================================================================
 // voltserver_hal DMA trait implementations
 //==============================================================================
-impl<Chan, S, D> voltserver_hal::dma::Transfer for Transfer<Chan, BufferPair<S, D>>
-where
-    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
-    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    Chan: AnyChannel,
-{
-    type Error = super::Error;
-    type SrcWord = S::Beat;
-    type DstWord = D::Beat;
-    type Src = S;
-    type Dst = D;
-
-    fn source_buffer<'a>(&'a self) -> &'a Self::Src {
-        &self.buffers.source
-    }
-
-    fn dest_buffer<'a>(&'a self) -> &'a Self::Dst {
-        &self.buffers.destination
-    }
-}
-
-impl<C, S, D> voltserver_hal::dma::ReadyTransfer for Transfer<C, BufferPair<S, D>>
-where
-    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
-    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    C: AnyChannel<Status = Ready>,
-{
-    type Busy = Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>>;
-
-    fn begin(self) -> Result<Self::Busy> {
-        Ok(self.begin())
-    }
-}
-
-impl <C, S, D> voltserver_hal::dma::BusyTransfer for Transfer<C, BufferPair<S, D>>
-where
-    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
-    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
-    C: AnyChannel<Status = Busy>,
-{
-    type Ready = Transfer<Channel<ChannelId<C>, Ready>, BufferPair<S, D>>;
-
-    fn disable(self) -> Result<Self::Ready> {
-        let trig_src = self.trig_src;
-        let trig_act = self.trig_act;
-        let (channel, src, dst) = self.stop();
-
-        Ok(unsafe { Transfer::new_unchecked(channel, src, dst, false, trig_src, trig_act) })
-    }
-
-    fn software_trigger(&mut self) -> Result<()> {
-        self.software_trigger();
-        Ok(())
-    }
-
-    fn is_complete(&mut self) -> bool {
-        self.complete()
-    }
-}
+//impl<Chan, S, D> voltserver_hal::dma::Transfer for Transfer<Chan, BufferPair<S, D>>
+//where
+//    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+//    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
+//    Chan: AnyChannel,
+//{
+//    type Error = super::Error;
+//    type SrcWord = S::Beat;
+//    type DstWord = D::Beat;
+//    type Src = S;
+//    type Dst = D;
+//
+//    fn source_buffer<'a>(&'a self) -> &'a Self::Src {
+//        &self.buffers.source
+//    }
+//
+//    fn dest_buffer<'a>(&'a self) -> &'a Self::Dst {
+//        &self.buffers.destination
+//    }
+//}
+//
+//impl<C, S, D> voltserver_hal::dma::ReadyTransfer for Transfer<C, BufferPair<S, D>>
+//where
+//    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+//    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
+//    C: AnyChannel<Status = Ready>,
+//{
+//    type Busy = Transfer<Channel<ChannelId<C>, Busy>, BufferPair<S, D>>;
+//
+//    fn begin(self) -> Result<Self::Busy> {
+//        Ok(self.begin())
+//    }
+//}
+//
+//impl <C, S, D> voltserver_hal::dma::BusyTransfer for Transfer<C, BufferPair<S, D>>
+//where
+//    S: Buffer + voltserver_hal::dma::SrcBuffer<S::Beat>,
+//    D: Buffer<Beat = S::Beat> + voltserver_hal::dma::DstBuffer<D::Beat>,
+//    C: AnyChannel<Status = Busy>,
+//{
+//    type Ready = Transfer<Channel<ChannelId<C>, Ready>, BufferPair<S, D>>;
+//
+//    fn disable(self) -> Result<Self::Ready> {
+//        let trig_src = self.trig_src;
+//        let trig_act = self.trig_act;
+//        let (channel, src, dst) = self.stop();
+//
+//        Ok(unsafe { Transfer::new_unchecked(channel, src, dst, false, trig_src, trig_act) })
+//    }
+//
+//    fn software_trigger(&mut self) -> Result<()> {
+//        self.software_trigger();
+//        Ok(())
+//    }
+//
+//    fn is_complete(&mut self) -> bool {
+//        self.complete()
+//    }
+//}

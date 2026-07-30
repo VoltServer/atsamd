@@ -251,7 +251,7 @@
 
 use atsamd_hal_macros::hal_cfg;
 
-pub use channel::*;
+//pub use channel::*;
 pub use dma_controller::*;
 pub use transfer::*;
 

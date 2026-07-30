@@ -5,8 +5,8 @@ use crate::ehal_02::{blocking, serial};
 use crate::ehal_nb;
 use num_traits::PrimInt;
 
-#[cfg(feature = "dma")]
-mod dma;
+//#[cfg(feature = "dma")]
+//mod dma;
 mod panic_on;
 
 #[hal_module(
