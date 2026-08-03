@@ -524,6 +524,28 @@ impl<I: AdcInstance> Adc<I> {
     }
 }
 
+unsafe impl<I: AdcInstance> crate::dmac::Buffer for Adc<I> {
+    type Beat = u16;
+
+    fn dma_ptr(&mut self) -> *mut Self::Beat {
+        todo!()
+    }
+
+    fn incrementing(&self) -> bool {
+        false
+    }
+
+    fn buffer_len(&self) -> usize {
+        1
+    }
+}
+
+impl<I: AdcInstance> voltserver_hal::dma::Buffer<u16> for Adc<I> {
+    type Contents = [u16; 1];
+}
+
+impl<I: AdcInstance> voltserver_hal::dma::SrcBuffer<u16> for Adc<I> {}
+
 #[cfg(feature = "async")]
 /// Implementation for async mode only methods
 impl<I: AdcInstance, F> FutureAdc<I, F>
