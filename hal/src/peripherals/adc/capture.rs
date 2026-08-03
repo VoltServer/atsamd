@@ -3,204 +3,222 @@ use super::{Adc, AdcInstance, PosChannel, NegChannel, PosAdcPin, NegAdcPin, samp
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
 
-pub trait State: Sealed {}
-pub enum Ready {}
-pub enum InProgress {}
-pub enum Complete {}
+use crate::dmac;
+use crate::dmac::transfer::State as TransferState;
+use crate::dmac::transfer::TransferChannelId;
 
-impl Sealed for Ready {}
-impl Sealed for InProgress {}
-impl Sealed for Complete {}
-
-impl State for Ready {}
-impl State for InProgress {}
-impl State for Complete {}
-
-pub struct SingleEndedCapture<const N: usize, I, P, R, S>
+pub struct SingleEndedCapture<const N: usize, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    S: State,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::AnyTransfer<Buf = B>,
 {
     adc: Adc<I>,
-    buffer: [UnsignedSample<R>; N],
+    dma_transfer: T,
     _pos: PhantomData<P>,
-    _state: PhantomData<S>,
+    _res: PhantomData<R>,
 }
 
-impl<const N: usize, I, P, R> SingleEndedCapture<N, I, P, R, Ready>
+impl<const N: usize, I, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::ReadyTransfer<Buf = B>,
 {
-    fn from_channel(adc: Adc<I>, _pos: P) -> Self {
+    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T) -> Self {
         Self {
             adc,
-            buffer: unsafe { [<UnsignedSample<R> as RawSample>::new_unchecked(0) ;N] },
+            dma_transfer,
             _pos: PhantomData,
-            _state: PhantomData,
+            _res: PhantomData,
         }
     }
 
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin) -> Self {
-        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel())
+    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T) -> Self {
+        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
     }
 }
 
-impl<const N: usize, I, P, R, S> Capture for SingleEndedCapture<N, I, P, R, S>
+impl<const N: usize, I, P, R, B, T> Capture for SingleEndedCapture<N, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    S: State,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::AnyTransfer<Buf = B>,
 {
     type Error = super::Error;
     type Sample = UnsignedSample<R>;
     type Output = [Self::Sample; N];
 }
 
-impl<const N: usize, I, P, R> ReadyCapture for SingleEndedCapture<N, I, P, R, Ready>
+impl<const N: usize, I, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
+    BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
-    type InProgress = SingleEndedCapture<N, I, P, R, InProgress>;
+    type InProgress = SingleEndedCapture<N, I, P, R, B, BusyXfer>;
 
     fn start(self) -> Result<Self::InProgress, Self::Error> {
-        //TODO: create & start DMA transfer
+        //TODO: configure ADC
+        //TODO: start DMA
+
         todo!()
     }
 }
 
-impl<const N: usize, I, P, R> InProgressCapture for SingleEndedCapture<N, I, P, R, InProgress>
+impl<const N: usize, I, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
+    CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, Ready>;
-    type Complete = SingleEndedCapture<N, I, P, R, Complete>;
+    type Complete = SingleEndedCapture<N, I, P, R, B, CompleteXfer>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
-        todo!()
+        self.dma_transfer.software_trigger();
+        Ok(())
     }
 
-    fn is_complete(&self) -> Result<bool, Self::Error> {
-        todo!()
+    fn is_complete(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.dma_transfer.is_complete())
     }
 
-    fn wait(&self) -> Result<(), Self::Error> {
-        todo!()
+    fn wait(&mut self) -> Result<(), Self::Error> {
+        while !self.dma_transfer.is_complete() {}
+        Ok(())
     }
 
     fn stop(self) -> Result<Self::Complete, Self::Error> {
-        todo!()
+        Ok(Self::Complete {
+            adc: self.adc,
+            dma_transfer: self.dma_transfer.stop(),
+            _pos: PhantomData,
+            _res: PhantomData,
+        })
     }
 }
 
-impl<const N: usize, I, P, R> CompleteCapture for SingleEndedCapture<N, I, P, R, Complete>
+impl<const N: usize, I, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, P, R, B, T>
 where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
+    ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, Ready>;
+    type Ready = SingleEndedCapture<N, I, P, R, B, ReadyXfer>;
 
     fn reset(self) -> Self::Ready {
-        todo!()
+        Self::Ready {
+            adc: self.adc,
+            dma_transfer: self.dma_transfer.reset(),
+            _pos: PhantomData,
+            _res: PhantomData,
+        }
     }
 
-    fn convert(self) -> Result<(Self::Ready, Self::Output), Self::Error> {
-        todo!()
-    }
-}
-
-pub struct DifferentialCapture<const N: usize, I, PC, NC, R, S>
-where
-    I: AdcInstance,
-    PC: PosChannel<I>,
-    NC: NegChannel<I>,
-    R: Resolution,
-    S: State,
-{
-    adc: Adc<I>,
-    buffer: [SignedSample<R>; N],
-    _pos: PhantomData<PC>,
-    _neg: PhantomData<NC>,
-    _state: PhantomData<S>,
-}
-
-impl<const N: usize, I, PC, NC, R, S> Capture for DifferentialCapture<N, I, PC, NC, R, S>
-where
-    I: AdcInstance,
-    PC: PosChannel<I>,
-    NC: NegChannel<I>,
-    R: Resolution,
-    S: State,
-{
-    type Error = super::Error;
-    type Sample = SignedSample<R>;
-    type Output = [Self::Sample; N];
-}
-
-impl<const N: usize, I, PC, NC, R> ReadyCapture for DifferentialCapture<N, I, PC, NC, R, Ready>
-where
-    I: AdcInstance,
-    PC: PosChannel<I>,
-    NC: NegChannel<I>,
-    R: Resolution,
-{
-    type InProgress = DifferentialCapture<N, I, PC, NC, R, InProgress>;
-
-    fn start(self) -> Result<Self::InProgress, Self::Error> {
+    fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
+        // convert raw buffer to array of UnsignedSample's
         todo!()
     }
 }
 
-impl<const N: usize, I, PC, NC, R> InProgressCapture for DifferentialCapture<N, I, PC, NC, R, InProgress>
-where
-    I: AdcInstance,
-    PC: PosChannel<I>,
-    NC: NegChannel<I>,
-    R: Resolution,
-{
-    type Ready = DifferentialCapture<N, I, PC, NC, R, Ready>;
-    type Complete = DifferentialCapture<N, I, PC, NC, R, Complete>;
-
-    fn trigger(&mut self) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn is_complete(&self) -> Result<bool, Self::Error> {
-        todo!()
-    }
-
-    fn wait(&self) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn stop(self) -> Result<Self::Complete, Self::Error> {
-        todo!()
-    }
-}
-
-impl<const N: usize, I, PC, NC, R> CompleteCapture for DifferentialCapture<N, I, PC, NC, R, Complete>
-where
-    I: AdcInstance,
-    PC: PosChannel<I>,
-    NC: NegChannel<I>,
-    R: Resolution,
-{
-    type Ready = DifferentialCapture<N, I, PC, NC, R, Ready>;
-
-    fn reset(self) -> Self::Ready {
-        todo!()
-    }
-
-    fn convert(self) -> Result<(Self::Ready, Self::Output), Self::Error> {
-        todo!()
-    }
-}
+//pub struct DifferentialCapture<const N: usize, I, PC, NC, R, S>
+//where
+//    I: AdcInstance,
+//    PC: PosChannel<I>,
+//    NC: NegChannel<I>,
+//    R: Resolution,
+//    S: State,
+//{
+//    adc: Adc<I>,
+//    buffer: [SignedSample<R>; N],
+//    _pos: PhantomData<PC>,
+//    _neg: PhantomData<NC>,
+//    _state: PhantomData<S>,
+//}
+//
+//impl<const N: usize, I, PC, NC, R, S> Capture for DifferentialCapture<N, I, PC, NC, R, S>
+//where
+//    I: AdcInstance,
+//    PC: PosChannel<I>,
+//    NC: NegChannel<I>,
+//    R: Resolution,
+//    S: State,
+//{
+//    type Error = super::Error;
+//    type Sample = SignedSample<R>;
+//    type Output = [Self::Sample; N];
+//}
+//
+//impl<const N: usize, I, PC, NC, R> ReadyCapture for DifferentialCapture<N, I, PC, NC, R, Ready>
+//where
+//    I: AdcInstance,
+//    PC: PosChannel<I>,
+//    NC: NegChannel<I>,
+//    R: Resolution,
+//{
+//    type InProgress = DifferentialCapture<N, I, PC, NC, R, InProgress>;
+//
+//    fn start(self) -> Result<Self::InProgress, Self::Error> {
+//        todo!()
+//    }
+//}
+//
+//impl<const N: usize, I, PC, NC, R> InProgressCapture for DifferentialCapture<N, I, PC, NC, R, InProgress>
+//where
+//    I: AdcInstance,
+//    PC: PosChannel<I>,
+//    NC: NegChannel<I>,
+//    R: Resolution,
+//{
+//    type Ready = DifferentialCapture<N, I, PC, NC, R, Ready>;
+//    type Complete = DifferentialCapture<N, I, PC, NC, R, Complete>;
+//
+//    fn trigger(&mut self) -> Result<(), Self::Error> {
+//        todo!()
+//    }
+//
+//    fn is_complete(&self) -> Result<bool, Self::Error> {
+//        todo!()
+//    }
+//
+//    fn wait(&self) -> Result<(), Self::Error> {
+//        todo!()
+//    }
+//
+//    fn stop(self) -> Result<Self::Complete, Self::Error> {
+//        todo!()
+//    }
+//}
+//
+//impl<const N: usize, I, PC, NC, R> CompleteCapture for DifferentialCapture<N, I, PC, NC, R, Complete>
+//where
+//    I: AdcInstance,
+//    PC: PosChannel<I>,
+//    NC: NegChannel<I>,
+//    R: Resolution,
+//{
+//    type Ready = DifferentialCapture<N, I, PC, NC, R, Ready>;
+//
+//    fn reset(self) -> Self::Ready {
+//        todo!()
+//    }
+//
+//    fn convert(self) -> Result<(Self::Ready, Self::Output), Self::Error> {
+//        todo!()
+//    }
+//}
