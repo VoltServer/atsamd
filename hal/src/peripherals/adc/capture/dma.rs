@@ -1,5 +1,5 @@
 use voltserver_hal::adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample};
-use super::{Adc, AdcInstance, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
+use crate::adc::{Adc, AdcInstance, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
 
@@ -51,7 +51,7 @@ where
     B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
-    type Error = super::Error;
+    type Error = crate::adc::Error;
     type Sample = UnsignedSample<R>;
     type Output = [Self::Sample; N];
 }
