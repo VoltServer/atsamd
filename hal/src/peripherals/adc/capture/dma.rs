@@ -1,11 +1,15 @@
-use voltserver_hal::adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample};
+use voltserver_hal::{
+    adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample},
+    dma::{ReadableDstBuffer},
+};
 use crate::adc::{Adc, AdcInstance, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
 
 use crate::dmac;
-use crate::dmac::transfer::State as TransferState;
-use crate::dmac::transfer::TransferChannelId;
+use dmac::transfer::State as TransferState;
+use dmac::transfer::TransferChannelId;
+use dmac::BufferPairBeat;
 
 pub struct SingleEndedCapture<const N: usize, I, P, R, B, T>
 where
@@ -26,7 +30,7 @@ where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
     T: dmac::ReadyTransfer<Buf = B>,
 {
     fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T) -> Self {
@@ -48,7 +52,7 @@ where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     type Error = crate::adc::Error;
@@ -61,7 +65,12 @@ where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<
+        Src = Adc<I>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+            + ReadableDstBuffer<BufferPairBeat<B>,
+                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+        >,
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
@@ -80,7 +89,12 @@ where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<
+        Src = Adc<I>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+            + ReadableDstBuffer<BufferPairBeat<B>,
+                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+        >,
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
@@ -115,7 +129,12 @@ where
     I: AdcInstance,
     P: PosChannel<I>,
     R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<
+        Src = Adc<I>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+            + ReadableDstBuffer<BufferPairBeat<B>,
+                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+        >,
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
@@ -131,8 +150,11 @@ where
     }
 
     fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
-        // convert raw buffer to array of UnsignedSample's
-        todo!()
+        //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
+        // from DMA?
+        let samples = Self::Sample::from_array(self.dma_transfer.borrow_destination().read()).ok_or(Self::Error::SampleOverflow)?;
+
+        Ok((self.reset(), samples))
     }
 }
 

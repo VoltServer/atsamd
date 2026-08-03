@@ -104,6 +104,8 @@ pub enum Error {
     ClockTooFast,
     /// Buffer overflowed
     BufferOverrun,
+    /// Sample cannot be represented at the specified resolution
+    SampleOverflow,
 }
 
 impl voltserver_hal::adc::Error for Error {
