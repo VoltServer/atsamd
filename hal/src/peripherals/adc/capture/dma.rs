@@ -152,6 +152,7 @@ where
     fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
         //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
         // from DMA?
+        //TODO: add logic to handle left-adjusted samples
         let samples = Self::Sample::from_array(self.dma_transfer.borrow_destination().read()).ok_or(Self::Error::SampleOverflow)?;
 
         Ok((self.reset(), samples))
