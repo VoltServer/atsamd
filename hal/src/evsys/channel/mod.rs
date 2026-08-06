@@ -1,5 +1,9 @@
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
+use super::evsys_controller::ChId;
+
+mod reg;
+use reg::RegisterBlock;
 
 pub trait Status: Sealed {}
 
