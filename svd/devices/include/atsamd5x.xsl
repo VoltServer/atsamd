@@ -507,4 +507,610 @@
       </enumeratedValue>
     </enumeratedValues>
   </xsl:template>
+
+  <!-- The EVSYS event generations sources are not listed in the original SVD -->
+  <xsl:template match="/device/peripherals/peripheral[name='EVSYS']/registers/cluster/register[name='CHANNEL']/fields/field[name='EVGEN']">
+    <field>
+      <xsl:copy-of select="./name"/>
+      <xsl:copy-of select="./description"/>
+      <xsl:copy-of select="./bitOffset"/>
+      <xsl:copy-of select="./bitWidth"/>
+
+      <enumeratedValues>
+        <name>EVGENSelect</name>
+        <enumeratedValue>
+          <name>NONE</name>
+          <description>No event generator selected</description>
+          <value>0x00</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>OSCCTRL_XOSC_FAIL0</name>
+          <description>XOSC0 fail detection</description>
+          <value>0x01</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>OSCCTRL_XOSC_FAIL1</name>
+          <description>XOSC1 fail detection</description>
+          <value>0x02</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>OSC32KCTRL_XOSC32K_FAIL</name>
+          <description>XOSC32K fail detection</description>
+          <value>0x03</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER0</name>
+          <description>RTC period 0</description>
+          <value>0x04</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER1</name>
+          <description>RTC period 1</description>
+          <value>0x05</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER2</name>
+          <description>RTC period 2</description>
+          <value>0x06</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER3</name>
+          <description>RTC period 3</description>
+          <value>0x07</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER4</name>
+          <description>RTC period 4</description>
+          <value>0x08</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER5</name>
+          <description>RTC period 5</description>
+          <value>0x09</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER6</name>
+          <description>RTC period 6</description>
+          <value>0x0A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_PER7</name>
+          <description>RTC period 7</description>
+          <value>0x0B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_CMP0</name>
+          <description>RTC comparison 0</description>
+          <value>0x0C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_CMP1</name>
+          <description>RTC comparison 1</description>
+          <value>0x0D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_CMP2</name>
+          <description>RTC comparison 2</description>
+          <value>0x0E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_CMP3</name>
+          <description>RTC comparison 3</description>
+          <value>0x0F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_TAMPER</name>
+          <description>RTC tamper detection</description>
+          <value>0x10</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>RTC_OVF</name>
+          <description>RTC overflow</description>
+          <value>0x11</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT0</name>
+          <description>EIC external interrupt 0</description>
+          <value>0x12</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT1</name>
+          <description>EIC external interrupt 1</description>
+          <value>0x13</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT2</name>
+          <description>EIC external interrupt 2</description>
+          <value>0x14</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT3</name>
+          <description>EIC external interrupt 3</description>
+          <value>0x15</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT4</name>
+          <description>EIC external interrupt 4</description>
+          <value>0x16</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT5</name>
+          <description>EIC external interrupt 5</description>
+          <value>0x17</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT6</name>
+          <description>EIC external interrupt 6</description>
+          <value>0x18</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT7</name>
+          <description>EIC external interrupt 7</description>
+          <value>0x19</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT8</name>
+          <description>EIC external interrupt 8</description>
+          <value>0x1A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT9</name>
+          <description>EIC external interrupt 9</description>
+          <value>0x1B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT10</name>
+          <description>EIC external interrupt 10</description>
+          <value>0x1C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT11</name>
+          <description>EIC external interrupt 11</description>
+          <value>0x1D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT12</name>
+          <description>EIC external interrupt 12</description>
+          <value>0x1E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT13</name>
+          <description>EIC external interrupt 13</description>
+          <value>0x1F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT14</name>
+          <description>EIC external interrupt 14</description>
+          <value>0x20</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>EIC_EXTINT15</name>
+          <description>EIC external interrupt 15</description>
+          <value>0x21</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DMAC_CH0</name>
+          <description>DMA channel 0</description>
+          <value>0x22</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DMAC_CH1</name>
+          <description>DMA channel 1</description>
+          <value>0x23</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DMAC_CH2</name>
+          <description>DMA channel 2</description>
+          <value>0x24</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DMAC_CH3</name>
+          <description>DMA channel 3</description>
+          <value>0x25</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PAC_ACCERR</name>
+          <description>PAC Acc. error</description>
+          <value>0x26</value>
+        </enumeratedValue>
+        <!-- 0x27 & 0x28 Reserved -->
+        <enumeratedValue>
+          <name>TCC0_OVF</name>
+          <description>TCC0 Overflow</description>
+          <value>0x29</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_TRG</name>
+          <description>TCC0 Trigger Event</description>
+          <value>0x2A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_CNT</name>
+          <description>TCC0 Counter</description>
+          <value>0x2B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC0</name>
+          <description>TCC0 Match/Compare 0</description>
+          <value>0x2C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC1</name>
+          <description>TCC0 Match/Compare 1</description>
+          <value>0x2D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC2</name>
+          <description>TCC0 Match/Compare 2</description>
+          <value>0x2E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC3</name>
+          <description>TCC0 Match/Compare 3</description>
+          <value>0x2F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC4</name>
+          <description>TCC0 Match/Compare 4</description>
+          <value>0x30</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC0_MC5</name>
+          <description>TCC0 Match/Compare 5</description>
+          <value>0x31</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_OVF</name>
+          <description>TCC1 Overflow</description>
+          <value>0x32</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_TRG</name>
+          <description>TCC1 Trigger Event</description>
+          <value>0x33</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_CNT</name>
+          <description>TCC1 Counter</description>
+          <value>0x34</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_MC0</name>
+          <description>TCC1 Match/Compare 0</description>
+          <value>0x35</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_MC1</name>
+          <description>TCC1 Match/Compare 1</description>
+          <value>0x36</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_MC2</name>
+          <description>TCC1 Match/Compare 2</description>
+          <value>0x37</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC1_MC3</name>
+          <description>TCC1 Match/Compare 3</description>
+          <value>0x38</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_OVF</name>
+          <description>TCC2 Overflow</description>
+          <value>0x39</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_TRG</name>
+          <description>TCC2 Trigger Event</description>
+          <value>0x3A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_CNT</name>
+          <description>TCC2 Counter</description>
+          <value>0x3B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_MC0</name>
+          <description>TCC2 Match/Compare 0</description>
+          <value>0x3C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_MC1</name>
+          <description>TCC2 Match/Compare 1</description>
+          <value>0x3D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC2_MC2</name>
+          <description>TCC2 Match/Compare 2</description>
+          <value>0x3E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC3_OVF</name>
+          <description>TCC3 Overflow</description>
+          <value>0x3F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC3_TRG</name>
+          <description>TCC3 Trigger Event</description>
+          <value>0x40</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC3_CNT</name>
+          <description>TCC3 Counter</description>
+          <value>0x41</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC3_MC0</name>
+          <description>TCC3 Match/Compare 0</description>
+          <value>0x42</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC3_MC1</name>
+          <description>TCC3 Match/Compare 1</description>
+          <value>0x43</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC4_OVF</name>
+          <description>TCC4 Overflow</description>
+          <value>0x44</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC4_TRG</name>
+          <description>TCC4 Trigger Event</description>
+          <value>0x45</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC4_CNT</name>
+          <description>TCC4 Counter</description>
+          <value>0x46</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC4_MC0</name>
+          <description>TCC4 Match/Compare 0</description>
+          <value>0x47</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TCC4_MC1</name>
+          <description>TCC4 Match/Compare 1</description>
+          <value>0x48</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC0_OVF</name>
+          <description>TC0 Overflow</description>
+          <value>0x49</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC0_MC0</name>
+          <description>TC0 Match/Compare 0</description>
+          <value>0x4A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC0_MC1</name>
+          <description>TC0 Match/Compare 1</description>
+          <value>0x4B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC1_OVF</name>
+          <description>TC1 Overflow</description>
+          <value>0x4C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC1_MC0</name>
+          <description>TC1 Match/Compare 0</description>
+          <value>0x4D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC1_MC1</name>
+          <description>TC1 Match/Compare 1</description>
+          <value>0x4E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC2_OVF</name>
+          <description>TC2 Overflow</description>
+          <value>0x4F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC2_MC0</name>
+          <description>TC2 Match/Compare 0</description>
+          <value>0x50</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC2_MC1</name>
+          <description>TC2 Match/Compare 1</description>
+          <value>0x51</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC3_OVF</name>
+          <description>TC3 Overflow</description>
+          <value>0x52</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC3_MC0</name>
+          <description>TC3 Match/Compare 0</description>
+          <value>0x53</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC3_MC1</name>
+          <description>TC3 Match/Compare 1</description>
+          <value>0x54</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC4_OVF</name>
+          <description>TC4 Overflow</description>
+          <value>0x55</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC4_MC0</name>
+          <description>TC4 Match/Compare 0</description>
+          <value>0x56</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC4_MC1</name>
+          <description>TC4 Match/Compare 1</description>
+          <value>0x57</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC5_OVF</name>
+          <description>TC5 Overflow</description>
+          <value>0x58</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC5_MC0</name>
+          <description>TC5 Match/Compare 0</description>
+          <value>0x59</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC5_MC1</name>
+          <description>TC5 Match/Compare 1</description>
+          <value>0x5A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC6_OVF</name>
+          <description>TC6 Overflow</description>
+          <value>0x5B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC6_MC0</name>
+          <description>TC6 Match/Compare 0</description>
+          <value>0x5C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC6_MC1</name>
+          <description>TC6 Match/Compare 1</description>
+          <value>0x5D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC7_OVF</name>
+          <description>TC7 Overflow</description>
+          <value>0x5E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC7_MC0</name>
+          <description>TC7 Match/Compare 0</description>
+          <value>0x5F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TC7_MC1</name>
+          <description>TC7 Match/Compare 1</description>
+          <value>0x60</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_OVF</name>
+          <description>PDEC Overflow</description>
+          <value>0x61</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_ERR</name>
+          <description>PDEC Error</description>
+          <value>0x62</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_DIR</name>
+          <description>PDEC Direction</description>
+          <value>0x63</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_VLC</name>
+          <description>PDEC VLC</description>
+          <value>0x64</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_MC0</name>
+          <description>PDEC MC0</description>
+          <value>0x65</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>PEDC_MC1</name>
+          <description>PDEC MC1</description>
+          <value>0x66</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>ADC0_RESRDY</name>
+          <description>ADC0 RESRDY</description>
+          <value>0x67</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>ADC0_WINMON</name>
+          <description>ADC0 Window Monitor</description>
+          <value>0x68</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>ADC1_RESRDY</name>
+          <description>ADC1 RESRDY</description>
+          <value>0x69</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>ADC1_WINMON</name>
+          <description>ADC1 Window Monitor</description>
+          <value>0x6A</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>AC_COMP0</name>
+          <description>AC Comparator 0</description>
+          <value>0x6B</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>AC_COMP1</name>
+          <description>AC Comparator 1</description>
+          <value>0x6C</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>AC_WIN</name>
+          <description>AC0 Window</description>
+          <value>0x6D</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DAC_EMPTY0</name>
+          <description>DAC empty 0</description>
+          <value>0x6E</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DAC_EMPTY1</name>
+          <description>DAC empty 1</description>
+          <value>0x6F</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DAC_RESRDY0</name>
+          <description>DAC RESRDY 0</description>
+          <value>0x70</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>DAC_RESRDY1</name>
+          <description>DAC RESRDY 1</description>
+          <value>0x71</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>GMAC_TSU_CMP</name>
+          <description>GMAC Timestamp CMP</description>
+          <value>0x72</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>TRNG_READY</name>
+          <description>TRNG Ready</description>
+          <value>0x73</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>CCL_LUTOUT0</name>
+          <description>CCL LUTOUT 0</description>
+          <value>0x74</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>CCL_LUTOUT1</name>
+          <description>CCL LUTOUT 1</description>
+          <value>0x75</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>CCL_LUTOUT2</name>
+          <description>CCL LUTOUT 2</description>
+          <value>0x76</value>
+        </enumeratedValue>
+        <enumeratedValue>
+          <name>CCL_LUTOUT3</name>
+          <description>CCL LUTOUT 3</description>
+          <value>0x77</value>
+        </enumeratedValue>
+        <!-- 0x78-0x7F Reserved -->
+      </enumeratedValues>
+    </field>
+  </xsl:template>
 </xsl:stylesheet>
