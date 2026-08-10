@@ -7,13 +7,20 @@ use crate::clock::v2::{
     pclk::{PclkId, DynPclkId},
 };
 
-pub trait ChId: PclkId {
+use seq_macro::seq;
+use crate::typelevel::Sealed;
+use super::channel::{Channel, Uninitialized};
+
+use super::with_num_evsys_channels;
+use super::with_num_evsys_synchronous_channels;
+
+pub trait ChId: Sealed {
     const U8: u8;
     const USIZE: usize;
 }
 
 /// Marker trait for channels that support the synchronus and resynchronized paths
-pub trait SynchronusCh: ChId {}
+pub trait SynchronusCh: ChId + PclkId {}
 
 macro_rules! define_channel_struct {
     ($num_channels:literal) => {
@@ -21,14 +28,13 @@ macro_rules! define_channel_struct {
             #(
                 pub enum Ch~N {}
 
-                impl ChId for CH~N {
+                impl Sealed for Ch~N {}
+
+                impl ChId for Ch~N {
                     const U8: u8 = N;
                     const USIZE: usize = N;
                 }
 
-                impl PclkId for CH~N {
-                    const DYN: DynPclkId = DynPclkId::EvSys~N;
-                }
             )*
 
         
@@ -40,16 +46,22 @@ macro_rules! define_channel_struct {
         });
     };
 }
+with_num_evsys_channels!(define_channel_struct);
 
-macro_rules! mark_synchronus_channels {
+macro_rules! mark_synchronous_channels {
     ($num_channels:literal) => {
         seq!(N in 0..$num_channels {
             #(
+                impl PclkId for Ch~N {
+                    const DYN: DynPclkId = DynPclkId::EvSys~N;
+                }
+
                 impl SynchronusCh for Ch~N {}
             )*
         });
     };
 }
+with_num_evsys_synchronous_channels!(mark_synchronous_channels);
 
 
 
