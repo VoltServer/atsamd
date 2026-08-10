@@ -12,7 +12,7 @@ use crate::pac::{
     },
 };
 
-#[hal_cfg("dmac-d5x")]
+#[hal_cfg("evsys-d5x")]
 use pac::evsys::channels as channel_regs;
 
 use channel_regs::{
@@ -235,6 +235,7 @@ pub(super) struct RegisterBlock<Id: ChId> {
     pub channel: ChannelProxy<Id, Channel>,
     pub chintenclr: ChintenclrProxy<Id, Chintenclr>,
     pub chintenset: ChintensetProxy<Id, Chintenset>,
+    pub chintflag: ChintflagProxy<Id, Chintflag>,
     pub chstatus: ChstatusProxy<Id, Chstatus>,
     pub intstatus: IntstatusProxy<Id, Intstatus>,
     pub busych: BusychProxy<Id, Busych>,
@@ -247,6 +248,7 @@ impl<Id: ChId> RegisterBlock<Id> {
             channel: ChannelProxy::new(),
             chintenclr: ChintenclrProxy::new(),
             chintenset: ChintensetProxy::new(),
+            chintflag: ChintflagProxy::new(),
             chstatus: ChstatusProxy::new(),
             intstatus: IntstatusProxy::new(),
             busych: BusychProxy::new(),

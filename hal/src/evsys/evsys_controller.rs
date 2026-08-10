@@ -4,12 +4,16 @@ use crate::{
 
 use crate::clock::v2::{
     apb::{ApbClk, DynApbId, ApbId},
+    pclk::{PclkId, DynPclkId},
 };
 
-pub trait ChId {
+pub trait ChId: PclkId {
     const U8: u8;
     const USIZE: usize;
 }
+
+/// Marker trait for channels that support the synchronus and resynchronized paths
+pub trait SynchronusCh: ChId {}
 
 macro_rules! define_channel_struct {
     ($num_channels:literal) => {
@@ -20,6 +24,10 @@ macro_rules! define_channel_struct {
                 impl ChId for CH~N {
                     const U8: u8 = N;
                     const USIZE: usize = N;
+                }
+
+                impl PclkId for CH~N {
+                    const DYN: DynPclkId = DynPclkId::EvSys~N;
                 }
             )*
 
@@ -33,6 +41,15 @@ macro_rules! define_channel_struct {
     };
 }
 
+macro_rules! mark_synchronus_channels {
+    ($num_channels:literal) => {
+        seq!(N in 0..$num_channels {
+            #(
+                impl SynchronusCh for Ch~N {}
+            )*
+        });
+    };
+}
 
 
 
