@@ -7,20 +7,16 @@ use paste::paste;
 use crate::pac::{
     self, Evsys, Peripherals,
     evsys::{Busych, Intstatus, Swevt},
-    evsys::{
-        busych::BusychSpec, intstatus::IntstatusSpec, swevt::SwevtSpec,
-    },
+    evsys::{busych::BusychSpec, intstatus::IntstatusSpec, swevt::SwevtSpec},
 };
 
 #[hal_cfg("evsys-d5x")]
 use pac::evsys::channels as channel_regs;
 
 use channel_regs::{
-    Channel, channel::ChannelSpec,
-    Chintenclr, chintenclr::ChintenclrSpec,
-    Chintenset, chintenset::ChintensetSpec,
-    Chintflag, chintflag::ChintflagSpec,
-    Chstatus, chstatus::ChstatusSpec,
+    Channel, Chintenclr, Chintenset, Chintflag, Chstatus, channel::ChannelSpec,
+    chintenclr::ChintenclrSpec, chintenset::ChintensetSpec, chintflag::ChintflagSpec,
+    chstatus::ChstatusSpec,
 };
 
 pub(super) trait Register<Id: ChId> {

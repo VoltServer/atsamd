@@ -1,11 +1,11 @@
-use core::marker::PhantomData;
 use super::{
     Error,
+    channel::{AnyChannel, Asynchronous, ChId, OptionChId, Resynchronized, Synchronous},
     evsys_controller::EvsysController,
-    channel::{ChId, OptionChId, AnyChannel, Asynchronous, Synchronous, Resynchronized},
 };
+use crate::typelevel::{Is, NoneT, Sealed};
+use core::marker::PhantomData;
 use paste::paste;
-use crate::typelevel::{Sealed, NoneT, Is};
 
 mod reg;
 use reg::RegisterBlock;
@@ -24,11 +24,13 @@ pub trait SyncUsrId: UsrId {}
 //==============================================================================
 // User
 //==============================================================================
-/// Trait representing a peripheral which can be configured to receive EVSYS events.
+/// Trait representing a peripheral which can be configured to receive EVSYS
+/// events.
 ///
 /// # Safety
 ///
-/// This trait must only be implemented on peripherals with the proper [`UsrId`](s).
+/// This trait must only be implemented on peripherals with the proper
+/// [`UsrId`](s).
 pub unsafe trait User<Id: UsrId + private::UserRegAccess>: Sealed {
     /// Configure the User to act on events from the given channel.
     ///
@@ -38,11 +40,13 @@ pub unsafe trait User<Id: UsrId + private::UserRegAccess>: Sealed {
     /// # Safety
     ///
     /// This method does not verify that the channel and user are compatible.
-    /// [`AsyncUser::with_asynchronous_channel`], [`SyncUser::with_synchronous_channel`]
-    /// or [`SyncUser::with_resynchronized_channel`] are the perfered safe API methods.
+    /// [`AsyncUser::with_asynchronous_channel`],
+    /// [`SyncUser::with_synchronous_channel`]
+    /// or [`SyncUser::with_resynchronized_channel`] are the perfered safe API
+    /// methods.
     unsafe fn with_channel_unchecked<C: AnyChannel>(
         controller: &mut EvsysController,
-        _chan: C
+        _chan: C,
     ) -> Result<UserMux<Id, C::Id>, Error> {
         let mux = Id::take_register(&mut controller.user_regs)?;
 
@@ -52,7 +56,6 @@ pub unsafe trait User<Id: UsrId + private::UserRegAccess>: Sealed {
 
 /// Trait for peripherals which accept asynchronous events
 pub trait AsyncUser<Id: AsyncUsrId + private::UserRegAccess>: User<Id> {
-
     /// Configure the User to act on events from the given channel, ensuring
     /// that the user supports asynchronous events and the channel has been
     /// configured as such.
@@ -63,14 +66,15 @@ pub trait AsyncUser<Id: AsyncUsrId + private::UserRegAccess>: User<Id> {
         controller: &mut EvsysController,
         chan: C,
     ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a 
-        // compile-time gaurentee that the user and channel both support 
+        // Always safe as method signature and trait bounds serves as a
+        // compile-time gaurentee that the user and channel both support
         // and are configured for asynchronous operation
         unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
     }
 }
 
-/// Marker trait for peripherals which accept synchronous and resynchronized events
+/// Marker trait for peripherals which accept synchronous and resynchronized
+/// events
 pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
     /// Configure the User to act on events from the given channel, ensuring
     /// that the user supports synchronous events and the channel has been
@@ -82,8 +86,8 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
         controller: &mut EvsysController,
         chan: C,
     ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a 
-        // compile-time gaurentee that the user and channel both support 
+        // Always safe as method signature and trait bounds serves as a
+        // compile-time gaurentee that the user and channel both support
         // and are configured for synchronous operation
         unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
     }
@@ -98,8 +102,8 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
         controller: &mut EvsysController,
         chan: C,
     ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a 
-        // compile-time gaurentee that the user and channel both support 
+        // Always safe as method signature and trait bounds serves as a
+        // compile-time gaurentee that the user and channel both support
         // and are configured for resynchronized operation
         unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
     }
@@ -108,7 +112,7 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
 //==============================================================================
 // AnyUserMux
 //==============================================================================
-pub trait AnyUserMux : Sealed + Is<Type = SpecificUserMux<Self>> {
+pub trait AnyUserMux: Sealed + Is<Type = SpecificUserMux<Self>> {
     type UsrId: UsrId;
     type ChId: ChId;
 }
@@ -169,7 +173,9 @@ impl<Id: UsrId, C: OptionChId> UserMux<Id, C> {
     pub fn to_channel<Other: ChId>(mut self) -> UserMux<Id, Other> {
         // Safe, as value is from ChId which is only implemented for valid
         // channels
-        self.regs.user.write(|w| unsafe { w.channel().bits(Other::U8) });
+        self.regs
+            .user
+            .write(|w| unsafe { w.channel().bits(Other::U8) });
 
         UserMux {
             regs: self.regs,
@@ -211,7 +217,7 @@ macro_rules! create_user_regs {
             }
         }
     };
-    
+
     // Internal rule for a asynchronous user
     (@async $name:ident) => {
         paste! {
@@ -278,10 +284,11 @@ macro_rules! create_user_regs {
     };
 }
 
-//TODO: this is specifically for SAMD5x/E5x, it's probably different for SAMD21, etc and
-// should be handled/defined differently. Also, not all of these need to be defined if
-// the peripherals/channels are not useable (DMAC channels, TCC peripherals, etc)
-create_user_regs!{
+//TODO: this is specifically for SAMD5x/E5x, it's probably different for
+// SAMD21, etc and should be handled/defined differently. Also, not all of these
+// need to be defined if the peripherals/channels are not useable (DMAC
+// channels, TCC peripherals, etc)
+create_user_regs! {
     RTC_TAMPER, 0, "A";
     PORT_EV0, 1, "A";
     PORT_EV1, 2, "A";

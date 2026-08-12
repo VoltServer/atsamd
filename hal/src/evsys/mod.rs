@@ -1,13 +1,13 @@
 use atsamd_hal_macros::hal_cfg;
 
 pub use channel::*;
-pub use evsys_controller::*;
 pub use event::*;
+pub use evsys_controller::*;
 pub use user::*;
 
 pub mod channel;
-pub mod evsys_controller;
 pub mod event;
+pub mod evsys_controller;
 pub mod user;
 
 pub enum Error {
@@ -32,4 +32,3 @@ macro_rules! with_num_evsys_synchronous_channels {
     };
 }
 pub(super) use with_num_evsys_synchronous_channels;
-

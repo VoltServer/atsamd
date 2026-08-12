@@ -14,23 +14,21 @@
 //! be in: [`Uninitialized`], [`Asynchronous`], [`Synchronous`] or
 //! [`Resynchronized`]. Only certain channels may support the [`Asynchronous`]
 //! and [`Synchronous`] modes.
-//!
 #![allow(unused_braces)]
 
 use atsamd_hal_macros::hal_cfg;
 
-use core::marker::PhantomData;
-use crate::typelevel::{Sealed, Is, NoneT};
-use modular_bitfield::prelude::*;
 use crate::clock::v2::pclk;
+use crate::typelevel::{Is, NoneT, Sealed};
+use core::marker::PhantomData;
+use modular_bitfield::prelude::*;
 
 mod reg;
 use reg::RegisterBlock;
 
 #[hal_cfg("evsys-d5x")]
 pub use crate::pac::evsys::channels::channel::{
-    Evgenselect as EventSource,
-    Edgselselect as EdgeType,
+    Edgselselect as EdgeType, Evgenselect as EventSource,
 };
 
 //==============================================================================
@@ -53,7 +51,8 @@ impl<Id: ChId> OptionChId for Id {}
 //==============================================================================
 // SynchronousCh
 //==============================================================================
-/// Marker trait for channels that support the synchronus and resynchronized paths
+/// Marker trait for channels that support the synchronus and resynchronized
+/// paths
 pub trait SynchronousCh: ChId + pclk::PclkId {}
 
 //==============================================================================
@@ -198,12 +197,10 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
     #[inline]
     pub fn check_and_clear_interrupts(&mut self, flags: InterruptFlags) -> InterruptFlags {
         let mut cleared = 0;
-        self.regs
-            .chintflag
-            .modify(|r, w| {
-                cleared = r.bits() & flags.into_bytes()[0];
-                unsafe { w.bits(cleared) }
-            });
+        self.regs.chintflag.modify(|r, w| {
+            cleared = r.bits() & flags.into_bytes()[0];
+            unsafe { w.bits(cleared) }
+        });
 
         InterruptFlags::from_bytes([cleared])
     }
@@ -214,13 +211,11 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
         self.regs.swevt.set_bit();
     }
 
-    /// Disable this channel, stopping future events from propagating and transforming
-    /// the [`Channel`] back to its `Uninitialized` state.
+    /// Disable this channel, stopping future events from propagating and
+    /// transforming the [`Channel`] back to its `Uninitialized` state.
     #[inline]
     pub fn disable(mut self) -> Channel<Id, Uninitialized> {
-        self.regs
-            .channel
-            .write(|w| w.evgen().none());
+        self.regs.channel.write(|w| w.evgen().none());
 
         Channel {
             regs: self.regs,
@@ -242,13 +237,14 @@ impl<Id: SynchronousCh, S: Status> Channel<Id, S> {
     // that the clock will stay enabled for the duration of its lifetime.
 
     /// Configure the channel to use a synchronous path for event propagation.
-    /// Requires the peripheral clock associated with this channel to be enabled.
+    /// Requires the peripheral clock associated with this channel to be
+    /// enabled.
     ///
-    /// This method takes a reference to a [`Pclk`] as an argument to form a compile-time
-    /// guarentee that the clock corresponding to this channel has been configured and
-    /// enabled. In the future this will likely change to taking full ownership of it;
-    /// in the meantime, the caller must ensure that the PCLK is enabled for the
-    /// [`Channel`]s lifetime.
+    /// This method takes a reference to a [`Pclk`] as an argument to form a
+    /// compile-time guarentee that the clock corresponding to this channel
+    /// has been configured and enabled. In the future this will likely
+    /// change to taking full ownership of it; in the meantime, the caller
+    /// must ensure that the PCLK is enabled for the [`Channel`]s lifetime.
     #[inline]
     pub fn synchronous<PS: pclk::PclkSourceId>(
         mut self,
@@ -266,26 +262,25 @@ impl<Id: SynchronousCh, S: Status> Channel<Id, S> {
         }
     }
 
-    /// Configure the channel to use a resynchronized path for event propagation.
-    /// Requires the peripheral clock associated with this channel to be enabled.
+    /// Configure the channel to use a resynchronized path for event
+    /// propagation. Requires the peripheral clock associated with this
+    /// channel to be enabled.
     ///
-    /// This method takes a reference to a [`Pclk`] as an argument to form a compile-time
-    /// guarentee that the clock corresponding to this channel has been configured and
-    /// enabled. In the future this will likely change to taking full ownership of it;
-    /// in the meantime, the caller must ensure that the PCLK is enabled for the
-    /// [`Channel`]s lifetime.
+    /// This method takes a reference to a [`Pclk`] as an argument to form a
+    /// compile-time guarentee that the clock corresponding to this channel
+    /// has been configured and enabled. In the future this will likely
+    /// change to taking full ownership of it; in the meantime, the caller
+    /// must ensure that the PCLK is enabled for the [`Channel`]s lifetime.
     #[inline]
     pub fn resynchronized<PS: pclk::PclkSourceId>(
         mut self,
         _clk: &pclk::Pclk<Id, PS>,
         edge_type: EdgeType,
     ) -> Channel<Id, Resynchronized> {
-        self.regs
-            .channel
-            .modify(|_, w| {
-                w.path().resynchronized();
-                w.edgsel().variant(edge_type)
-            });
+        self.regs.channel.modify(|_, w| {
+            w.path().resynchronized();
+            w.edgsel().variant(edge_type)
+        });
 
         Channel {
             regs: self.regs,
@@ -296,22 +291,14 @@ impl<Id: SynchronousCh, S: Status> Channel<Id, S> {
     /// Configure the behavior of this channel when the processor enters standby
     #[inline]
     pub fn run_standby(&mut self, yes: bool) {
-        self.regs
-            .channel
-            .modify(|_, w| {
-                w.runstdby().variant(yes)
-            });
+        self.regs.channel.modify(|_, w| w.runstdby().variant(yes));
     }
 
-    /// Configure the behavior of this channel with respect to when the peripheral
-    /// clock is requested.
+    /// Configure the behavior of this channel with respect to when the
+    /// peripheral clock is requested.
     #[inline]
     pub fn on_demand(&mut self, yes: bool) {
-        self.regs
-            .channel
-            .modify(|_, w| {
-                w.ondemand().variant(yes)
-            });
+        self.regs.channel.modify(|_, w| w.ondemand().variant(yes));
     }
 }
 

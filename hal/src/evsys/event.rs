@@ -1,6 +1,8 @@
-use super::{channel::{AnyChannel, ChannelId}, user::{AnyUserMux, UserMuxId}};
-use crate::typelevel::{Sealed, Is};
-
+use super::{
+    channel::{AnyChannel, ChannelId},
+    user::{AnyUserMux, UserMuxId},
+};
+use crate::typelevel::{Is, Sealed};
 
 //==============================================================================
 // AnyEvent
@@ -78,13 +80,11 @@ where
     /// Create a new [`Event`] from a [`Channel`] and [`UserMux`]
     #[inline]
     pub fn new(channel: C, user_mux: U) -> Self {
-        Event {
-            channel,
-            user_mux,
-        }
+        Event { channel, user_mux }
     }
 
-    /// Release the owned [`Channel`] and [`UserMux`], allowing them to be reused
+    /// Release the owned [`Channel`] and [`UserMux`], allowing them to be
+    /// reused
     #[inline]
     pub fn free(self) -> (C, U) {
         (self.channel, self.user_mux)

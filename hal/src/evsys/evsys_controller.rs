@@ -1,15 +1,13 @@
-use crate::{
-    pac::{Evsys},
-};
+use crate::pac::Evsys;
 
 use crate::clock::v2::{
-    apb::{ApbClk, DynApbId, ApbId},
-    pclk::{PclkId, DynPclkId},
+    apb::{ApbClk, ApbId, DynApbId},
+    pclk::{DynPclkId, PclkId},
 };
 
-use seq_macro::seq;
+use super::channel::{ChId, Channel, SynchronousCh, Uninitialized};
 use crate::typelevel::Sealed;
-use super::channel::{ChId, SynchronousCh, Channel, Uninitialized};
+use seq_macro::seq;
 
 use super::with_num_evsys_channels;
 use super::with_num_evsys_synchronous_channels;
@@ -31,7 +29,7 @@ macro_rules! define_channel_struct {
 
             )*
 
-        
+
             pub struct Channels(
                 #(
                     pub Channel<Ch~N, Uninitialized>,
@@ -56,7 +54,6 @@ macro_rules! mark_synchronous_channels {
     };
 }
 with_num_evsys_synchronous_channels!(mark_synchronous_channels);
-
 
 pub struct EvsysController {
     evsys: Evsys,
