@@ -5,19 +5,14 @@ use super::{
     channel::{ChId, OptionChId, AnyChannel, Asynchronous, Synchronous, Resynchronized},
 };
 use paste::paste;
-use crate::typelevel::{Sealed, NoneT};
+use crate::typelevel::{Sealed, NoneT, Is};
 
 mod reg;
 use reg::RegisterBlock;
 
-mod private {
-    use super::*;
-
-    pub trait UserRegAccess: UsrId {
-        fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error>;
-    }
-}
-
+//==============================================================================
+// UsrId
+//==============================================================================
 pub trait UsrId: Sealed + Sized {
     const U8: u8;
     const USIZE: usize;
@@ -26,6 +21,9 @@ pub trait UsrId: Sealed + Sized {
 pub trait AsyncUsrId: UsrId {}
 pub trait SyncUsrId: UsrId {}
 
+//==============================================================================
+// User
+//==============================================================================
 /// Trait representing a peripheral which can be configured to receive EVSYS events.
 ///
 /// # Safety
@@ -107,6 +105,60 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
     }
 }
 
+//==============================================================================
+// AnyUserMux
+//==============================================================================
+pub trait AnyUserMux : Sealed + Is<Type = SpecificUserMux<Self>> {
+    type UsrId: UsrId;
+    type ChId: ChId;
+}
+
+pub type SpecificUserMux<U> = UserMux<<U as AnyUserMux>::UsrId, <U as AnyUserMux>::ChId>;
+
+pub type UserMuxId<U> = <U as AnyUserMux>::UsrId;
+pub type UserMuxChId<U> = <U as AnyUserMux>::ChId;
+
+impl<Id, C> Sealed for UserMux<Id, C>
+where
+    Id: UsrId,
+    C: ChId,
+{
+}
+
+impl<Id, C> AnyUserMux for UserMux<Id, C>
+where
+    Id: UsrId,
+    C: ChId,
+{
+    type UsrId = Id;
+    type ChId = C;
+}
+
+impl<Id, C> AsRef<Self> for UserMux<Id, C>
+where
+    Id: UsrId,
+    C: ChId,
+{
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl<Id, C> AsMut<Self> for UserMux<Id, C>
+where
+    Id: UsrId,
+    C: ChId,
+{
+    #[inline]
+    fn as_mut(&mut self) -> &mut Self {
+        self
+    }
+}
+
+//==============================================================================
+// UserMux
+//==============================================================================
 pub struct UserMux<Id: UsrId, C: OptionChId> {
     regs: RegisterBlock<Id>,
     _channel: PhantomData<C>,
@@ -297,4 +349,12 @@ create_user_regs!{
     CCL_LUTIN1, 64, "AS";
     CCL_LUTIN2, 65, "AS";
     CCL_LUTIN3, 66, "AS"
+}
+
+mod private {
+    use super::*;
+
+    pub trait UserRegAccess: UsrId {
+        fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error>;
+    }
 }
