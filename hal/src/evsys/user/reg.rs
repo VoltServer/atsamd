@@ -1,4 +1,3 @@
-use atsamd_hal_macros::hal_cfg;
 use super::UsrId;
 use core::marker::PhantomData;
 use paste::paste;

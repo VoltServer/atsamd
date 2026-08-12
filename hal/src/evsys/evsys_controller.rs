@@ -70,7 +70,7 @@ impl ApbId for EvsysController {
 }
 
 impl EvsysController {
-    pub fn init(mut evsys: Evsys, clock: ApbClk<Self>) -> Self {
+    pub fn init(evsys: Evsys, clock: ApbClk<Self>) -> Self {
         Self {
             evsys,
             user_regs: unsafe { UserRegisters::new() },
@@ -79,15 +79,12 @@ impl EvsysController {
     }
 
     pub fn round_robin_scheduling(&mut self, yes: bool) {
-        todo!()
+        self.evsys.prictrl().write(|w| w.rren().bit(yes));
     }
 
     pub fn swreset(&mut self) {
-        todo!()
-    }
-
-    pub fn free(self) -> Evsys {
-        todo!()
+        self.evsys.ctrla().write(|w| w.swrst().set_bit());
+        while self.evsys.ctrla().read().swrst().bit_is_set() {}
     }
 }
 

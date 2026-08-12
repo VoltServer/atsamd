@@ -236,8 +236,11 @@ pub(super) struct RegisterBlock<Id: ChId> {
     pub chintenclr: ChintenclrProxy<Id, Chintenclr>,
     pub chintenset: ChintensetProxy<Id, Chintenset>,
     pub chintflag: ChintflagProxy<Id, Chintflag>,
+    #[allow(dead_code)]
     pub chstatus: ChstatusProxy<Id, Chstatus>,
+    #[allow(dead_code)]
     pub intstatus: IntstatusProxy<Id, Intstatus>,
+    #[allow(dead_code)]
     pub busych: BusychProxy<Id, Busych>,
     pub swevt: SwevtProxy<Id, Swevt>,
 }

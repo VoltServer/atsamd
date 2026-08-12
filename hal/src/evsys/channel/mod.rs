@@ -182,7 +182,6 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
         self.regs
             .chintenset
             .write(|w| unsafe { w.bits(flags.into()) });
-        todo!()
     }
 
     /// Selectively disable interrupts
