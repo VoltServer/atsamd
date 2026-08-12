@@ -9,18 +9,12 @@ use crate::clock::v2::{
 
 use seq_macro::seq;
 use crate::typelevel::Sealed;
-use super::channel::{Channel, Uninitialized};
+use super::channel::{ChId, SynchronousCh, Channel, Uninitialized};
 
 use super::with_num_evsys_channels;
 use super::with_num_evsys_synchronous_channels;
 
-pub trait ChId: Sealed {
-    const U8: u8;
-    const USIZE: usize;
-}
-
-/// Marker trait for channels that support the synchronus and resynchronized paths
-pub trait SynchronusCh: ChId + PclkId {}
+use super::user::UserRegisters;
 
 macro_rules! define_channel_struct {
     ($num_channels:literal) => {
@@ -56,7 +50,7 @@ macro_rules! mark_synchronous_channels {
                     const DYN: DynPclkId = DynPclkId::EvSys~N;
                 }
 
-                impl SynchronusCh for Ch~N {}
+                impl SynchronousCh for Ch~N {}
             )*
         });
     };
@@ -64,10 +58,9 @@ macro_rules! mark_synchronous_channels {
 with_num_evsys_synchronous_channels!(mark_synchronous_channels);
 
 
-
-
 pub struct EvsysController {
     evsys: Evsys,
+    pub(super) user_regs: UserRegisters,
     _apbclk: ApbClk<Self>,
 }
 
@@ -80,8 +73,17 @@ impl EvsysController {
     pub fn init(mut evsys: Evsys, clock: ApbClk<Self>) -> Self {
         Self {
             evsys,
+            user_regs: unsafe { UserRegisters::new() },
             _apbclk: clock,
         }
+    }
+
+    pub fn round_robin_scheduling(&mut self, yes: bool) {
+        todo!()
+    }
+
+    pub fn swreset(&mut self) {
+        todo!()
     }
 
     pub fn free(self) -> Evsys {
@@ -89,3 +91,22 @@ impl EvsysController {
     }
 }
 
+macro_rules! define_split {
+    ($num_channels:literal) => {
+        seq!(N in 0..$num_channels {
+            /// Split the EVSYS into individual channels
+            #[inline]
+            pub fn split(&mut self) -> Channels {
+                Channels(
+                    #(
+                        super::channel::new_chan(core::marker::PhantomData),
+                    )*
+                )
+            }
+        });
+    };
+}
+
+impl EvsysController {
+    with_num_evsys_channels!(define_split);
+}

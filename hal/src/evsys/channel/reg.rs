@@ -1,6 +1,6 @@
 use atsamd_hal_macros::hal_cfg;
 
-use super::super::evsys_controller::ChId;
+use super::ChId;
 use core::marker::PhantomData;
 use paste::paste;
 
@@ -24,7 +24,7 @@ use channel_regs::{
 };
 
 pub(super) trait Register<Id: ChId> {
-    /// Get a shared reference to the underlying PAC object {
+    /// Get a shared reference to the underlying PAC object
     fn evsys(&self) -> &Evsys;
 
     fn with_chid<F: FnOnce(&pac::evsys::Channels) -> R, R>(&mut self, fun: F) -> R {

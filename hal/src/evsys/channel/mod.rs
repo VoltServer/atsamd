@@ -20,8 +20,7 @@
 use atsamd_hal_macros::hal_cfg;
 
 use core::marker::PhantomData;
-use crate::typelevel::{Sealed, Is};
-use super::evsys_controller::{ChId, SynchronusCh};
+use crate::typelevel::{Sealed, Is, NoneT};
 use modular_bitfield::prelude::*;
 use crate::clock::v2::pclk;
 
@@ -33,6 +32,29 @@ pub use crate::pac::evsys::channels::channel::{
     Evgenselect as EventSource,
     Edgselselect as EdgeType,
 };
+
+//==============================================================================
+// ChId
+//==============================================================================
+pub trait ChId: Sealed {
+    const U8: u8;
+    const USIZE: usize;
+}
+
+//==============================================================================
+// OptionChId
+//==============================================================================
+/// Type-level equivalent of `Option<ChId>`
+pub trait OptionChId {}
+
+impl OptionChId for NoneT {}
+impl<Id: ChId> OptionChId for Id {}
+
+//==============================================================================
+// SynchronousCh
+//==============================================================================
+/// Marker trait for channels that support the synchronus and resynchronized paths
+pub trait SynchronousCh: ChId + pclk::PclkId {}
 
 //==============================================================================
 // Channel Status
@@ -209,7 +231,7 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
 }
 
 /// Methods for [`Channel`]s which support synchronus/resynchronized operation
-impl<Id: SynchronusCh, S: Status> Channel<Id, S> {
+impl<Id: SynchronousCh, S: Status> Channel<Id, S> {
     // TODO: Ideally, the Channel struct would take ownership of the Pclk type
     // when configured for use as a synchronous or resynchronized path. However,
     // since clock::v2 is not implemented for all chips yet, the
