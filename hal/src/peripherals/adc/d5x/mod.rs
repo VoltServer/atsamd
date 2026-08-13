@@ -13,6 +13,19 @@ use super::{
 };
 use crate::{calibration, pac, evsys};
 
+
+
+pub trait AdcStartMux: evsys::UsrId + evsys::private::UserRegAccess {
+    type Instance: AdcInstance;
+}
+impl AdcStartMux for evsys::Adc0Start {
+    type Instance = Adc0;
+}
+impl AdcStartMux for evsys::Adc1Start {
+    type Instance = Adc1;
+}
+
+
 /// ADC instance 0
 pub struct Adc0 {
     _adc: pac::Adc0,

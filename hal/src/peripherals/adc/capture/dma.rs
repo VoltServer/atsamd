@@ -2,18 +2,20 @@ use voltserver_hal::{
     adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample},
     dma::{ReadableDstBuffer},
 };
-use crate::adc::{Adc, AdcInstance, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
+use crate::adc::{Adc, AdcInstance, AdcStartMux, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
 
-use crate::dmac;
+use crate::{dmac, evsys};
 use dmac::transfer::State as TransferState;
 use dmac::transfer::TransferChannelId;
 use dmac::BufferPairBeat;
 
-pub struct SingleEndedCapture<const N: usize, I, P, R, B, T>
+pub struct SingleEndedCapture<const N: usize, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
@@ -21,35 +23,41 @@ where
 {
     adc: Adc<I>,
     dma_transfer: T,
+    event: E,
     _pos: PhantomData<P>,
     _res: PhantomData<R>,
 }
 
-impl<const N: usize, I, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, M, E, P, R, B, T> SingleEndedCapture<N, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
     T: dmac::ReadyTransfer<Buf = B>,
 {
-    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T) -> Self {
+    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T, event: E) -> Self {
         Self {
             adc,
             dma_transfer,
+            event,
             _pos: PhantomData,
             _res: PhantomData,
         }
     }
 
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T) -> Self {
-        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
+    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T, event: E) -> Self {
+        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer, event)
     }
 }
 
-impl<const N: usize, I, P, R, B, T> Capture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, M, E, P, R, B, T> Capture for SingleEndedCapture<N, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
@@ -60,9 +68,11 @@ where
     type Output = [Self::Sample; N];
 }
 
-impl<const N: usize, I, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, M, E, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<
@@ -74,7 +84,7 @@ where
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
-    type InProgress = SingleEndedCapture<N, I, P, R, B, BusyXfer>;
+    type InProgress = SingleEndedCapture<N, I, M, E, P, R, B, BusyXfer>;
 
     fn start(self) -> Result<Self::InProgress, Self::Error> {
         //TODO: configure ADC
@@ -84,9 +94,11 @@ where
     }
 }
 
-impl<const N: usize, I, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, M, E, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<
@@ -98,7 +110,7 @@ where
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
-    type Complete = SingleEndedCapture<N, I, P, R, B, CompleteXfer>;
+    type Complete = SingleEndedCapture<N, I, M, E, P, R, B, CompleteXfer>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
         self.dma_transfer.software_trigger();
@@ -124,9 +136,11 @@ where
     }
 }
 
-impl<const N: usize, I, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, M, E, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, M, E, P, R, B, T>
 where
-    I: AdcInstance,
+    I: AdcInstance + evsys::User<M>,
+    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<UserMux = M>,
     P: PosChannel<I>,
     R: Resolution,
     B: dmac::AnyBufferPair<
@@ -138,7 +152,7 @@ where
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, B, ReadyXfer>;
+    type Ready = SingleEndedCapture<N, I, M, E, P, R, B, ReadyXfer>;
 
     fn reset(self) -> Self::Ready {
         Self::Ready {
