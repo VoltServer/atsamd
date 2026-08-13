@@ -1,3 +1,5 @@
+//! # Event Abstractions
+
 use super::{
     channel::{AnyChannel, ChannelId},
     user::{AnyUserMux, UserMuxId},
