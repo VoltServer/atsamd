@@ -16,6 +16,8 @@ use reg::RegisterBlock;
 pub trait UsrId: Sealed + Sized {
     const U8: u8;
     const USIZE: usize;
+
+    unsafe fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error>;
 }
 
 pub trait AsyncUsrId: UsrId {}
@@ -31,7 +33,7 @@ pub trait SyncUsrId: UsrId {}
 ///
 /// This trait must only be implemented on peripherals with the proper
 /// [`UsrId`](s).
-pub unsafe trait User<Id: UsrId + private::UserRegAccess>: Sealed {
+pub unsafe trait User<Id: UsrId>: Sealed {
     /// Configure the User to act on events from the given channel.
     ///
     /// Returns a [`UserMux`] as validation that the EVSYS user multiplexer has
@@ -48,14 +50,14 @@ pub unsafe trait User<Id: UsrId + private::UserRegAccess>: Sealed {
         controller: &mut EvsysController,
         _chan: C,
     ) -> Result<UserMux<Id, C::Id>, Error> {
-        let mux = Id::take_register(&mut controller.user_regs)?;
+        let mux = unsafe { Id::take_register(&mut controller.user_regs)? };
 
         Ok(mux.to_channel())
     }
 }
 
 /// Trait for peripherals which accept asynchronous events
-pub trait AsyncUser<Id: AsyncUsrId + private::UserRegAccess>: User<Id> {
+pub trait AsyncUser<Id: AsyncUsrId>: User<Id> {
     /// Configure the User to act on events from the given channel, ensuring
     /// that the user supports asynchronous events and the channel has been
     /// configured as such.
@@ -76,13 +78,13 @@ pub trait AsyncUser<Id: AsyncUsrId + private::UserRegAccess>: User<Id> {
 impl<U, Id> AsyncUser<Id> for U
 where
     U: User<Id>,
-    Id: AsyncUsrId + private::UserRegAccess,
+    Id: AsyncUsrId,
 {
 }
 
 /// Marker trait for peripherals which accept synchronous and resynchronized
 /// events
-pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
+pub trait SyncUser<Id: SyncUsrId>: User<Id> {
     /// Configure the User to act on events from the given channel, ensuring
     /// that the user supports synchronous events and the channel has been
     /// configured as such.
@@ -119,7 +121,7 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
 impl<U, Id> SyncUser<Id> for U
 where
     U: User<Id>,
-    Id: SyncUsrId + private::UserRegAccess,
+    Id: SyncUsrId,
 {
 }
 
@@ -220,9 +222,7 @@ macro_rules! create_user_regs {
                 const U8: u8 = $id;
                 const USIZE: usize = $id;
 
-            }
-            impl private::UserRegAccess for [< $name:camel >] {
-                fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error> {
+                unsafe fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error> {
                     Ok(UserMux {
                         regs: user_regs.[< $name:lower >].take().ok_or(Error::UserInUse)?,
                         _channel: PhantomData,
@@ -370,13 +370,4 @@ create_user_regs! {
     CCL_LUTIN1, 64, "AS";
     CCL_LUTIN2, 65, "AS";
     CCL_LUTIN3, 66, "AS"
-}
-
-
-mod private {
-    use super::*;
-
-    pub trait UserRegAccess: UsrId {
-        fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error>;
-    }
 }
