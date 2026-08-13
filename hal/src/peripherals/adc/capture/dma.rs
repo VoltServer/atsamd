@@ -1,8 +1,8 @@
 use voltserver_hal::{
-    adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample},
+    adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample,},
     dma::{ReadableDstBuffer},
 };
-use crate::adc::{Adc, AdcInstance, AdcStartMux, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
+use crate::adc::{Adc, AdcInstance, AdcStartMux, Flags, SampleMode, GND, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
 use core::marker::PhantomData;
 use crate::typelevel::Sealed;
 
@@ -86,11 +86,29 @@ where
 {
     type InProgress = SingleEndedCapture<N, I, M, E, P, R, B, BusyXfer>;
 
-    fn start(self) -> Result<Self::InProgress, Self::Error> {
-        //TODO: configure ADC
-        //TODO: start DMA
+    fn start(mut self) -> Result<Self::InProgress, Self::Error> {
+        // Flush and configure the ADC, clearng any stale flags
+        self.adc.disable_start_events();
+        self.adc.flush();
+        self.adc.disable_interrupts(Flags::all());
+        self.adc.clear_all_flags();
+        self.adc.disable_freerunning();
+        self.adc.set_sample_mode(SampleMode::SingleEnded);
+        self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
 
-        todo!()
+        // Start DMA first as to not miss any conversions
+        let started_transfer = self.dma_transfer.begin();
+
+        // Enable ADC START event input
+        self.adc.enable_start_events();
+
+        Ok(Self::InProgress {
+            adc: self.adc,
+            dma_transfer: started_transfer,
+            event: self.event,
+            _pos: PhantomData,
+            _res: PhantomData,
+        })
     }
 }
 
@@ -113,23 +131,29 @@ where
     type Complete = SingleEndedCapture<N, I, M, E, P, R, B, CompleteXfer>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
-        self.dma_transfer.software_trigger();
+        // This could also trigger through the event system, but triggering
+        // a conversion directly through the ADC should be faster.
+        self.adc.start_conversion();
         Ok(())
     }
 
     fn is_complete(&mut self) -> Result<bool, Self::Error> {
+        //TODO: should error flags be checked here?
         Ok(self.dma_transfer.is_complete())
     }
 
     fn wait(&mut self) -> Result<(), Self::Error> {
         while !self.dma_transfer.is_complete() {}
+        //TODO: check for error flags
         Ok(())
     }
 
     fn stop(self) -> Result<Self::Complete, Self::Error> {
+        //TODO: check for error flags?
         Ok(Self::Complete {
             adc: self.adc,
             dma_transfer: self.dma_transfer.stop(),
+            event: self.event,
             _pos: PhantomData,
             _res: PhantomData,
         })
@@ -158,6 +182,7 @@ where
         Self::Ready {
             adc: self.adc,
             dma_transfer: self.dma_transfer.reset(),
+            event: self.event,
             _pos: PhantomData,
             _res: PhantomData,
         }

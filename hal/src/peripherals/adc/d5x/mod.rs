@@ -15,7 +15,7 @@ use crate::{calibration, pac, evsys};
 
 
 
-pub trait AdcStartMux: evsys::UsrId + evsys::private::UserRegAccess {
+pub trait AdcStartMux: evsys::UsrId {
     type Instance: AdcInstance;
 }
 impl AdcStartMux for evsys::Adc0Start {
@@ -246,8 +246,24 @@ impl<I: AdcInstance> Adc<I> {
     }
 
     #[inline]
+    pub(super) fn enable_start_events(&mut self) {
+        self.adc.evctrl().modify(|_, w| w.startei().set_bit());
+    }
+
+    #[inline]
+    pub(super) fn disable_start_events(&mut self) {
+        self.adc.evctrl().modify(|_, w| w.startei().clear_bit());
+    }
+
+    #[inline]
     pub(super) fn start_conversion(&mut self) {
         self.adc.swtrig().modify(|_, w| w.start().set_bit());
+    }
+
+    #[inline]
+    pub(super) fn flush(&mut self) {
+        self.adc.swtrig().modify(|_, w| w.flush().set_bit());
+        while self.adc.swtrig().read().flush().bit_is_set() {}
     }
 
     #[inline]
