@@ -94,6 +94,8 @@ pub mod timer_traits;
 #[cfg(feature = "dma")]
 pub mod dmac;
 
+pub mod evsys;
+
 #[doc(hidden)]
 mod peripherals;
 #[doc(inline)]
