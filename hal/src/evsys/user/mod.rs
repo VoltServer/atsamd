@@ -73,6 +73,13 @@ pub trait AsyncUser<Id: AsyncUsrId + private::UserRegAccess>: User<Id> {
     }
 }
 
+impl<U, Id> AsyncUser<Id> for U
+where
+    U: User<Id>,
+    Id: AsyncUsrId + private::UserRegAccess,
+{
+}
+
 /// Marker trait for peripherals which accept synchronous and resynchronized
 /// events
 pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
@@ -107,6 +114,13 @@ pub trait SyncUser<Id: SyncUsrId + private::UserRegAccess>: User<Id> {
         // and are configured for resynchronized operation
         unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
     }
+}
+
+impl<U, Id> SyncUser<Id> for U
+where
+    U: User<Id>,
+    Id: SyncUsrId + private::UserRegAccess,
+{
 }
 
 //==============================================================================
