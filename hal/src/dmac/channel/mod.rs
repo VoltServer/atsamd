@@ -32,6 +32,7 @@
 //! again before being able to use it with a `Transfer`.
 
 #![allow(unused_braces)]
+#![allow(unused_parens)]
 
 use core::marker::PhantomData;
 use core::sync::atomic;
@@ -118,6 +119,10 @@ impl ReadyChannel for ReadyFuture {}
 pub trait AnyChannel: Sealed + Is<Type = SpecificChannel<Self>> {
     type Status: Status;
     type Id: ChId;
+
+    /// Check is the channel has detected an error. Returns `Ok` if no error
+    /// flags are set, otherwise returns `Err(StatusFlags)`.
+    fn channel_error(&mut self) -> Result<(), StatusFlags>;
 }
 
 pub type SpecificChannel<C> = Channel<<C as AnyChannel>::Id, <C as AnyChannel>::Status>;
@@ -139,6 +144,14 @@ where
 {
     type Id = Id;
     type Status = S;
+
+    fn channel_error(&mut self) -> Result<(), StatusFlags> {
+        if self.interrupt_flags().is_error() {
+            Err(self.status_flags())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl<Id, S> AsRef<Self> for Channel<Id, S>
@@ -246,6 +259,18 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
         });
 
         InterruptFlags::from_bytes([cleared])
+    }
+
+    /// Checks all channel interrupt flags without clearing
+    #[inline]
+    pub fn interrupt_flags(&mut self) -> InterruptFlags {
+        InterruptFlags::from_bytes([self.regs.chintflag.read().bits()])
+    }
+
+    /// Checks the channel status flags
+    #[inline]
+    pub fn status_flags(&mut self) -> StatusFlags {
+        StatusFlags::from_bytes([self.regs.chstatus.read().bits()])
     }
 
     #[inline]
@@ -811,9 +836,38 @@ pub struct InterruptFlags {
     _reserved: B5,
 }
 
+impl InterruptFlags {
+    pub fn is_error(&self) -> bool {
+        self.terr()
+    }
+}
+
 impl Default for InterruptFlags {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Channel status flags
+#[bitfield]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug)]
+pub struct StatusFlags {
+    /// Channel pending
+    pub pend: bool,
+    /// Channel busy
+    pub busy: bool,
+    /// Channel fetch error
+    pub ferr: bool,
+    /// Channel CRC error
+    pub crcerr: bool,
+    #[skip]
+    _reserved: B4,
+}
+
+impl StatusFlags {
+    pub fn is_error(&self) -> bool {
+        self.ferr() | self.crcerr()
     }
 }
 

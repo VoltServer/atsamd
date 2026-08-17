@@ -84,7 +84,7 @@
 
 use super::{
     Error, Result,
-    channel::{AnyChannel, Busy as ChBusy, Channel, InterruptFlags, Ready as ChReady},
+    channel::{AnyChannel, Busy as ChBusy, Channel, InterruptFlags, StatusFlags, Ready as ChReady},
     dma_controller::{TriggerAction, TriggerSource, ChId},
 };
 use crate::typelevel::{Is, Sealed};
@@ -315,6 +315,9 @@ where
 //==============================================================================
 pub trait State: Sealed {
     type Chan: AnyChannel;
+
+    fn channel(&self) -> &Self::Chan;
+    fn channel_mut(&mut self) -> &mut Self::Chan;
 }
 
 type StateChannelId<St> = <<St as State>::Chan as AnyChannel>::Id;
@@ -326,14 +329,38 @@ pub struct Complete<Id: ChId> (pub Channel<Id, ChReady>);
 impl<Id: ChId> Sealed for Ready<Id> {}
 impl<Id: ChId> State for Ready<Id> {
     type Chan = Channel<Id, ChReady>;
+
+    fn channel(&self) -> &Self::Chan {
+        &self.0
+    }
+
+    fn channel_mut(&mut self) -> &mut Self::Chan {
+        &mut self.0
+    }
 }
 impl<Id: ChId> Sealed for Busy<Id> {}
 impl<Id: ChId> State for Busy<Id> {
     type Chan = Channel<Id, ChBusy>;
+
+    fn channel(&self) -> &Self::Chan {
+        &self.0
+    }
+
+    fn channel_mut(&mut self) -> &mut Self::Chan {
+        &mut self.0
+    }
 }
 impl<Id: ChId> Sealed for Complete<Id> {}
 impl<Id: ChId> State for Complete<Id> {
     type Chan = Channel<Id, ChReady>;
+
+    fn channel(&self) -> &Self::Chan {
+        &self.0
+    }
+
+    fn channel_mut(&mut self) -> &mut Self::Chan {
+        &mut self.0
+    }
 }
 
 //==============================================================================
@@ -342,6 +369,10 @@ impl<Id: ChId> State for Complete<Id> {
 pub trait AnyTransfer: Sealed + Is<Type = SpecificTransfer<Self>> {
     type Buf: AnyBufferPair;
     type State: State;
+
+    /// Check if the channel has any error flags set. Returns `Ok` if no error
+    /// flags are set, otherwise returns the flags.
+    fn channel_error(&mut self) -> core::result::Result<(), StatusFlags>;
 }
 
 pub type SpecificTransfer<T> = Transfer<<T as AnyTransfer>::Buf, <T as AnyTransfer>::State>;
@@ -367,6 +398,10 @@ where
 {
     type Buf = Buf;
     type State = S;
+
+    fn channel_error(&mut self) -> core::result::Result<(), StatusFlags> {
+        self.state.channel_mut().channel_error()
+    }
 }
 
 impl<Buf, S> AsRef<Self> for Transfer<Buf, S>
@@ -600,6 +635,7 @@ where
             Ok(())
         }
     }
+
 }
 
 impl<B, Id> Transfer<B, Ready<Id>>
