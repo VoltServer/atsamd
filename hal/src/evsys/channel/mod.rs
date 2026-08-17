@@ -23,6 +23,8 @@ use crate::typelevel::{Is, NoneT, Sealed};
 use core::marker::PhantomData;
 use modular_bitfield::prelude::*;
 
+use super::Error;
+
 mod reg;
 use reg::RegisterBlock;
 
@@ -86,6 +88,9 @@ impl Status for Asynchronous {}
 pub trait AnyChannel: Sealed + Is<Type = SpecificChannel<Self>> {
     type Status: Status;
     type Id: ChId;
+
+    fn error(&mut self) -> Result<(), Error>;
+    fn clear_errors(&mut self);
 }
 
 pub type SpecificChannel<C> = Channel<<C as AnyChannel>::Id, <C as AnyChannel>::Status>;
@@ -107,6 +112,18 @@ where
 {
     type Id = Id;
     type Status = S;
+
+    fn error(&mut self) -> Result<(), Error> {
+        if self.overrun_error() {
+            Err(Error::ChannelOverrun)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn clear_errors(&mut self) {
+        self.clear_errors();
+    }
 }
 
 impl<Id, S> AsRef<Self> for Channel<Id, S>
@@ -203,6 +220,20 @@ impl<Id: ChId, S: Status> Channel<Id, S> {
         });
 
         InterruptFlags::from_bytes([cleared])
+    }
+
+    /// Check whether this channel has detected an error.
+    /// This bit is only set if the channel is configured as synchronous
+    /// or resynchronized and therefore will always return `false`
+    /// for asynchronous channels.
+    pub fn overrun_error(&mut self) -> bool {
+        self.regs.chintflag.read().ovr().bit_is_set()
+    }
+
+    /// Clear any pending channel errors
+    pub fn clear_errors(&mut self) {
+        // OVR flag is cleared by writing 1
+        self.regs.chintflag.modify(|_, w| w.ovr().set_bit());
     }
 
     /// Trigger an event for this channel via software

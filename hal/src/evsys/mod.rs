@@ -52,9 +52,13 @@ pub mod event;
 pub mod evsys_controller;
 pub mod user;
 
+#[derive(Debug, Clone, Copy)]
 pub enum Error {
     /// The EVSYS channel is already in use
     ChannelInUse,
+    /// The channel has detected an overrun error.
+    /// Check that user peripheral is configured to process incoming events
+    ChannelOverrun,
     /// The EVSYS user is already in use
     UserInUse,
 }
