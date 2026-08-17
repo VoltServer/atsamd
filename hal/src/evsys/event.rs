@@ -1,6 +1,7 @@
 //! # Event Abstractions
 
 use super::{
+    Error,
     channel::{AnyChannel, ChannelId},
     user::{AnyUserMux, UserMuxId},
 };
@@ -13,6 +14,9 @@ use crate::typelevel::{Is, Sealed};
 pub trait AnyEvent: Sealed + Is<Type = SpecificEvent<Self>> {
     type Channel: AnyChannel;
     type UserMux: AnyUserMux<ChId = EventChannelId<Self>>;
+
+    fn channel_error(&mut self) -> Result<(), Error>;
+    fn clear_channel_errors(&mut self);
 }
 
 pub type SpecificEvent<E> = Event<<E as AnyEvent>::Channel, <E as AnyEvent>::UserMux>;
@@ -36,6 +40,14 @@ where
 {
     type Channel = C;
     type UserMux = U;
+
+    fn channel_error(&mut self) -> Result<(), Error> {
+        self.channel_error()
+    }
+
+    fn clear_channel_errors(&mut self) {
+        self.clear_channel_errors();
+    }
 }
 
 impl<C, U> AsRef<Self> for Event<C, U>
@@ -59,6 +71,13 @@ where
         self
     }
 }
+
+//==============================================================================
+// OptionEvent
+//==============================================================================
+pub trait OptionEvent {}
+impl OptionEvent for crate::typelevel::NoneT {}
+impl<E: AnyEvent> OptionEvent for E {}
 
 //==============================================================================
 // Event
@@ -90,5 +109,18 @@ where
     #[inline]
     pub fn free(self) -> (C, U) {
         (self.channel, self.user_mux)
+    }
+
+    /// Checks the event channel for error flags.
+    ///
+    /// Note that asynchronous channels do not support error detection
+    /// and will always return `Ok`.
+    pub fn channel_error(&mut self) -> Result<(), Error> {
+        self.channel.error()
+    }
+
+    /// Clears any pending errors for the event channel.
+    pub fn clear_channel_errors(&mut self) {
+        self.channel.clear_errors();
     }
 }
