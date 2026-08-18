@@ -123,6 +123,9 @@ pub trait AnyChannel: Sealed + Is<Type = SpecificChannel<Self>> {
     /// Check is the channel has detected an error. Returns `Ok` if no error
     /// flags are set, otherwise returns `Err(StatusFlags)`.
     fn channel_error(&mut self) -> Result<(), StatusFlags>;
+
+    /// Clear channel error flags
+    fn clear_channel_errors(&mut self);
 }
 
 pub type SpecificChannel<C> = Channel<<C as AnyChannel>::Id, <C as AnyChannel>::Status>;
@@ -151,6 +154,10 @@ where
         } else {
             Ok(())
         }
+    }
+
+    fn clear_channel_errors(&mut self) {
+        self.check_and_clear_interrupts(InterruptFlags::new().with_terr(true));
     }
 }
 

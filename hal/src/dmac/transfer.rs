@@ -373,6 +373,8 @@ pub trait AnyTransfer: Sealed + Is<Type = SpecificTransfer<Self>> {
     /// Check if the channel has any error flags set. Returns `Ok` if no error
     /// flags are set, otherwise returns the flags.
     fn channel_error(&mut self) -> core::result::Result<(), StatusFlags>;
+    /// Clear channel error flags
+    fn clear_channel_errors(&mut self);
 }
 
 pub type SpecificTransfer<T> = Transfer<<T as AnyTransfer>::Buf, <T as AnyTransfer>::State>;
@@ -401,6 +403,10 @@ where
 
     fn channel_error(&mut self) -> core::result::Result<(), StatusFlags> {
         self.state.channel_mut().channel_error()
+    }
+
+    fn clear_channel_errors(&mut self) {
+        self.state.channel_mut().clear_channel_errors();
     }
 }
 

@@ -107,6 +107,7 @@ where
         self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
 
         // Start DMA channel (& check for errors)
+        self.dma_transfer.clear_channel_errors();
         let mut started_transfer = self.dma_transfer.begin();
         started_transfer.channel_error()?;
 
@@ -278,6 +279,7 @@ where
         self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
 
         // Start DMA channel (& check for errors)
+        self.dma_transfer.clear_channel_errors();
         let mut started_transfer = self.dma_transfer.begin();
         started_transfer.channel_error()?;
 
@@ -314,7 +316,7 @@ where
         self.check_for_errors()?;
 
         // Trigger the ADC directly (no event)
-        // this should initiate the entire capture
+        // this will initiate the entire capture
         self.adc.start_conversion();
         Ok(())
     }
@@ -464,6 +466,7 @@ where
         self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
 
         // Start DMA first as to not miss any conversions
+        self.dma_transfer.clear_channel_errors();
         let mut started_transfer = self.dma_transfer.begin();
 
         // Enable ADC START event input
@@ -581,7 +584,7 @@ where
         // Clear all peripheral flags
         self.adc.clear_all_flags();
         self.event.clear_channel_errors();
-        //TODO: clear DMA channel flags?
+        transfer.clear_channel_errors();
 
         Ok(Self::Complete {
             adc: self.adc,
