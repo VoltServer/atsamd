@@ -22,10 +22,10 @@
 //! adc.read_buffer(&mut adc_pin, &mut _buffer).unwrap();
 //! ```
 
-use crate::{gpio::AnyPin, typelevel::Sealed};
+use crate::{gpio::AnyPin, typelevel::Sealed, dmac, evsys};
 use core::ops::Deref;
 
-use atsamd_hal_macros::{hal_cfg, hal_module};
+use atsamd_hal_macros::{hal_cfg, hal_module, hal_macro_helper};
 use pac::Peripherals;
 
 use crate::pac;
@@ -106,6 +106,26 @@ pub enum Error {
     BufferOverrun,
     /// Sample cannot be represented at the specified resolution
     SampleOverflow,
+
+    #[cfg(feature = "dma")]
+    /// DMA transfer error
+    Dma(dmac::channel::StatusFlags),
+
+    /// Event system error
+    Event(evsys::Error),
+}
+
+#[cfg(feature = "dma")]
+impl From<dmac::channel::StatusFlags> for Error {
+    fn from(flags: dmac::channel::StatusFlags) -> Self {
+        Self::Dma(flags)
+    }
+}
+
+impl From<evsys::Error> for Error {
+    fn from(err: evsys::Error) -> Self {
+        Self::Event(err)
+    }
 }
 
 impl voltserver_hal::adc::Error for Error {
