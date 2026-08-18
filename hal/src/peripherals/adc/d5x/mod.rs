@@ -311,6 +311,13 @@ impl<I: AdcInstance> Adc<I> {
         }
     }
 
+    /// Check whether the ADC is configured to left-adjust the conversion
+    /// result
+    #[inline]
+    pub(super) fn check_left_adjust(&self) -> bool {
+        self.adc.ctrlb().read().leftadj().bit_is_set()
+    }
+
     /// Enables an interrupt when conversion is ready.
     #[inline]
     #[allow(dead_code)]

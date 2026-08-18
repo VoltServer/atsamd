@@ -11,15 +11,6 @@ use dmac::transfer::State as TransferState;
 use dmac::transfer::TransferChannelId;
 use dmac::BufferPairBeat;
 
-pub struct Freerun {}
-impl evsys::OptionEvent for Freerun {}
-
-impl Default for Freerun {
-    fn default() -> Self {
-        Freerun {}
-    }
-}
-
 pub struct SingleEndedCapture<const N: usize, I, P, R, B, T, E = NoneT>
 where
     I: AdcInstance,
@@ -216,8 +207,11 @@ where
     fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
         //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
         // from DMA?
-        //TODO: add logic to handle left-adjusted samples
-        let samples = Self::Sample::from_array(self.dma_transfer.borrow_destination().read()).ok_or(Self::Error::SampleOverflow)?;
+        let samples = Self::Sample::from_array(
+                self.dma_transfer.borrow_destination().read(),
+                self.adc.check_left_adjust(),
+            )
+            .ok_or(Self::Error::SampleOverflow)?;
 
         Ok((self.reset(), samples))
     }
@@ -346,9 +340,8 @@ where
         // Stop the ADC from starting any more conversions
         self.adc.disable_freerunning();
 
-        let dma_complete = self.dma_transfer.is_complete();
-
         // Stop DMA transfer
+        let dma_complete = self.dma_transfer.is_complete();
         let mut transfer = self.dma_transfer.stop();
 
         // Check for DMA errors
@@ -403,8 +396,11 @@ where
     fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
         //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
         // from DMA?
-        //TODO: add logic to handle left-adjusted samples
-        let samples = Self::Sample::from_array(self.dma_transfer.borrow_destination().read()).ok_or(Self::Error::SampleOverflow)?;
+        let samples = Self::Sample::from_array(
+                self.dma_transfer.borrow_destination().read(),
+                self.adc.check_left_adjust(),
+            )
+            .ok_or(Self::Error::SampleOverflow)?;
 
         Ok((self.reset(), samples))
     }
@@ -628,8 +624,11 @@ where
     fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
         //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
         // from DMA?
-        //TODO: add logic to handle left-adjusted samples
-        let samples = Self::Sample::from_array(self.dma_transfer.borrow_destination().read()).ok_or(Self::Error::SampleOverflow)?;
+        let samples = Self::Sample::from_array(
+                self.dma_transfer.borrow_destination().read(),
+                self.adc.check_left_adjust(),
+            )
+            .ok_or(Self::Error::SampleOverflow)?;
 
         Ok((self.reset(), samples))
     }
@@ -721,3 +720,12 @@ where
 //        todo!()
 //    }
 //}
+
+pub struct Freerun {}
+impl evsys::OptionEvent for Freerun {}
+
+impl Default for Freerun {
+    fn default() -> Self {
+        Freerun {}
+    }
+}

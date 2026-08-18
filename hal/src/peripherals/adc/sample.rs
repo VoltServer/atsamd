@@ -48,11 +48,17 @@ impl<R: Resolution> UnsignedSample<R> {
     /// Creates an array of `UnsignedSample`s from an array of raw `u16`s
     /// Returns `None` if any of the samples cannot be represented at the specified
     /// resolution.
-    pub fn from_array<const N: usize>(raw_samples: &[u16; N]) -> Option<[Self; N]> {
+    pub fn from_array<const N: usize>(raw_samples: &[u16; N], left_adj: bool) -> Option<[Self; N]> {
         let mut buffer = [Self::default(); N];
 
         for (i, raw_sample) in raw_samples.iter().enumerate() {
-            let sample = Self::new(*raw_sample);
+            let shift_amt = if left_adj {
+                u16::BITS - R::RESOLUTION
+            } else {
+                0
+            };
+
+            let sample = Self::new(*raw_sample >> shift_amt);
 
             if let Some(sample) = sample {
                 buffer[i] = sample;
@@ -70,11 +76,17 @@ impl<R: Resolution> UnsignedSample<R> {
     /// # Safety
     /// Caller must ensure that values contained in `raw_samples` are valid at the
     /// specified resolution.
-    pub unsafe fn from_array_unchecked<const N: usize>(raw_samples: &[u16; N]) -> [Self; N] {
+    pub unsafe fn from_array_unchecked<const N: usize>(raw_samples: &[u16; N], left_adj: bool) -> [Self; N] {
         let mut buffer = [Self::default(); N];
 
         for (i, raw_sample) in raw_samples.iter().enumerate() {
-            buffer[i] = unsafe { Self::new_unchecked(*raw_sample) };
+            let shift_amt = if left_adj {
+                u16::BITS - R::RESOLUTION
+            } else {
+                0
+            };
+
+            buffer[i] = unsafe { Self::new_unchecked(*raw_sample >> shift_amt) };
         }
 
         buffer
