@@ -2,7 +2,11 @@ use voltserver_hal::{
     adc::{Capture, ReadyCapture, InProgressCapture, CompleteCapture, RawSample,},
     dma::{ReadableDstBuffer},
 };
-use crate::adc::{Adc, AdcInstance, AdcStartMux, Flags, SampleMode, GND, PosChannel, NegChannel, PosAdcPin, NegAdcPin, sample::{Resolution, SignedSample, UnsignedSample}};
+use crate::adc::{
+    Adc, AdcInstance, AdcStartMux, Flags, SampleMode, GND, PosChannel, NegChannel, PosAdcPin,
+    NegAdcPin, Resolution, Accumulation, AccumulationResolution,
+    sample::{SignedSample, UnsignedSample}
+};
 use core::marker::PhantomData;
 use crate::typelevel::{Sealed, NoneT};
 
@@ -11,61 +15,59 @@ use dmac::transfer::State as TransferState;
 use dmac::transfer::TransferChannelId;
 use dmac::BufferPairBeat;
 
-pub struct SingleEndedCapture<const N: usize, I, P, R, B, T, E = NoneT>
+pub struct SingleEndedCapture<const N: usize, I, A, P, B, T, E = NoneT>
 where
     I: AdcInstance,
+    A: Accumulation,
     E: evsys::OptionEvent,
     P: PosChannel<I>,
-    R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
-    adc: Adc<I>,
+    adc: Adc<I, A>,
     dma_transfer: T,
     event: E,
     _pos: PhantomData<P>,
-    _res: PhantomData<R>,
 }
 
 
-impl<const N: usize, I, P, R, B, T, E> Capture for SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E> Capture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance,
+    A: Accumulation,
     E: evsys::OptionEvent,
     P: PosChannel<I>,
-    R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     type Error = crate::adc::Error;
-    type Sample = UnsignedSample<R>;
+    type Sample = UnsignedSample<AccumulationResolution<A>>;
     type Output = [Self::Sample; N];
 }
 
 //==============================================================================
 // Software-triggered SingleEndedCapture (E = NoneT)
 //==============================================================================
-impl<const N: usize, I, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, A, P, B, T> SingleEndedCapture<N, I, A, P, B, T>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     /// Create a single-ended software-only triggered capture for an ADC channel
-    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T) -> Self {
+    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T) -> Self {
         Self {
             adc,
             dma_transfer,
             event: NoneT::default(),
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 
     /// Create a single-ended software-only triggered capture for an ADC pin
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T) -> Self {
+    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T) -> Self {
         Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
     }
 
@@ -80,21 +82,21 @@ where
 
 }
 
-impl<const N: usize, I, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, A, P, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
-    type InProgress = SingleEndedCapture<N, I, P, R, B, BusyXfer>;
+    type InProgress = SingleEndedCapture<N, I, A, P, B, BusyXfer>;
 
     fn start(mut self) -> Result<Self::InProgress, Self::Error> {
         // Flush and configure the ADC, clearing any stale flags
@@ -121,26 +123,25 @@ where
             dma_transfer: started_transfer,
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, A, P, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
-    type Complete = SingleEndedCapture<N, I, P, R, B, CompleteXfer>;
+    type Complete = SingleEndedCapture<N, I, A, P, B, CompleteXfer>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
         self.check_for_errors()?;
@@ -174,26 +175,25 @@ where
             dma_transfer: self.dma_transfer.stop(),
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, P, R, B, T>
+impl<const N: usize, I, A, P, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, B, ReadyXfer>;
+    type Ready = SingleEndedCapture<N, I, A, P, B, ReadyXfer>;
 
     fn reset(self) -> Self::Ready {
         Self::Ready {
@@ -201,7 +201,6 @@ where
             dma_transfer: self.dma_transfer.reset(),
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 
@@ -221,25 +220,24 @@ where
 //==============================================================================
 // Freerunning SingleEndedCapture (E = Freerun)
 //==============================================================================
-impl<const N: usize, I, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T, Freerun>
+impl<const N: usize, I, A, P, B, T> SingleEndedCapture<N, I, A, P, B, T, Freerun>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
-    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T) -> Self {
+    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T) -> Self {
         Self {
             adc,
             dma_transfer,
             event: Freerun::default(),
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T) -> Self {
+    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T) -> Self {
         Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
     }
 
@@ -252,21 +250,21 @@ where
     }
 }
 
-impl<const N: usize, I, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, P, R, B, T, Freerun>
+impl<const N: usize, I, A, P, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
-    type InProgress = SingleEndedCapture<N, I, P, R, B, BusyXfer, Freerun>;
+    type InProgress = SingleEndedCapture<N, I, A, P, B, BusyXfer, Freerun>;
 
     fn start(mut self) -> Result<Self::InProgress, Self::Error> {
         // Flush and configure the ADC, clearing any stale flags
@@ -291,26 +289,25 @@ where
             dma_transfer: started_transfer,
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, P, R, B, T, Freerun>
+impl<const N: usize, I, A, P, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>,
 {
-    type Complete = SingleEndedCapture<N, I, P, R, B, CompleteXfer, Freerun>;
+    type Complete = SingleEndedCapture<N, I, A, P, B, CompleteXfer, Freerun>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
         self.check_for_errors()?;
@@ -364,26 +361,25 @@ where
             dma_transfer: transfer,
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, P, R, B, T, Freerun>
+impl<const N: usize, I, A, P, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
 where
     I: AdcInstance,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, B, ReadyXfer, Freerun>;
+    type Ready = SingleEndedCapture<N, I, A, P, B, ReadyXfer, Freerun>;
 
     fn reset(self) -> Self::Ready {
         Self::Ready {
@@ -391,7 +387,6 @@ where
             dma_transfer: self.dma_transfer.reset(),
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 
@@ -408,52 +403,50 @@ where
     }
 }
 
-
 //==============================================================================
 // Event-triggered SingleEndedCapture
 //==============================================================================
-impl<const N: usize, I, M, E, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, M> SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance + evsys::User<M>,
-    M: AdcStartMux<Instance = I>,
-    E: evsys::AnyEvent<UserMux = M>,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
-    B: dmac::AnyBufferPair<Src = Adc<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
+    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
     T: dmac::ReadyTransfer<Buf = B>,
+    E: evsys::AnyEvent<UserMux = M>,
+    M: AdcStartMux<Instance = I>,
 {
-    fn from_channel(adc: Adc<I>, _pos: P, dma_transfer: T, event: E) -> Self {
+    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T, event: E) -> Self {
         Self {
             adc,
             dma_transfer,
             event,
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I>, _pin: Pin, dma_transfer: T, event: E) -> Self {
+    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T, event: E) -> Self {
         Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer, event)
     }
 }
 
-impl<const N: usize, I, M, E, P, R, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, M, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance + evsys::User<M>,
-    M: AdcStartMux<Instance = I>,
-    E: evsys::AnyEvent<UserMux = M>,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
+    E: evsys::AnyEvent<UserMux = M>,
+    M: AdcStartMux<Instance = I>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
-    type InProgress = SingleEndedCapture<N, I, P, R, B, BusyXfer, E>;
+    type InProgress = SingleEndedCapture<N, I, A, P, B, BusyXfer, E>;
 
     fn start(mut self) -> Result<Self::InProgress, Self::Error> {
         // Flush and configure the ADC, clearng any stale flags
@@ -485,25 +478,24 @@ where
             dma_transfer: started_transfer,
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, M, E, P, R, B, T> SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, M> SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance + evsys::User<M>,
-    M: AdcStartMux<Instance = I>,
-    E: evsys::AnyEvent<UserMux = M>,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B>,
+    E: evsys::AnyEvent<UserMux = M>,
+    M: AdcStartMux<Instance = I>,
 {
     /// Check for DMA, ADC, or EVSYS peripheral errors
     fn check_for_errors(&mut self) -> Result<(), <Self as Capture>::Error> {
@@ -519,23 +511,23 @@ where
     }
 }
 
-impl<const N: usize, I, M, E, P, R, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, M, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance + evsys::User<M>,
-    M: AdcStartMux<Instance = I>,
-    E: evsys::AnyEvent<UserMux = M>,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
+    E: evsys::AnyEvent<UserMux = M>,
+    M: AdcStartMux<Instance = I>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
-    type Complete = SingleEndedCapture<N, I, P, R, B, CompleteXfer, E>;
+    type Complete = SingleEndedCapture<N, I, A, P, B, CompleteXfer, E>;
 
     fn trigger(&mut self) -> Result<(), Self::Error> {
         self.check_for_errors()?;
@@ -591,28 +583,27 @@ where
             dma_transfer: transfer,
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, M, E, P, R, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, P, R, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, M, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
     I: AdcInstance + evsys::User<M>,
-    M: AdcStartMux<Instance = I>,
-    E: evsys::AnyEvent<UserMux = M>,
+    A: Accumulation,
     P: PosChannel<I>,
-    R: Resolution,
     B: dmac::AnyBufferPair<
-        Src = Adc<I>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<R> as RawSample>::Count>
+        Src = Adc<I, A>,
+        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<R> as RawSample>::Count; N]>
+                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
+    E: evsys::AnyEvent<UserMux = M>,
+    M: AdcStartMux<Instance = I>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
-    type Ready = SingleEndedCapture<N, I, P, R, B, ReadyXfer, E>;
+    type Ready = SingleEndedCapture<N, I, A, P, B, ReadyXfer, E>;
 
     fn reset(self) -> Self::Ready {
         Self::Ready {
@@ -620,7 +611,6 @@ where
             dma_transfer: self.dma_transfer.reset(),
             event: self.event,
             _pos: PhantomData,
-            _res: PhantomData,
         }
     }
 

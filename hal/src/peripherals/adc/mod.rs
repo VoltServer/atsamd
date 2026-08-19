@@ -51,6 +51,12 @@ pub use builder::*;
 
 mod sample;
 
+mod resolution;
+pub use resolution::*;
+
+mod accumulation;
+pub use accumulation::*;
+
 #[hal_cfg(any("adc-d11", "adc-d21"))]
 use crate::pac::adc as adc0;
 #[hal_cfg("adc-d5x")]
@@ -62,10 +68,10 @@ use channel::*;
 
 /// ADC Settings when reading Internal sensors (Like VREF and Temperatures)
 /// These settings are based on the minimums suggested in the datasheet
-const ADC_SETTINGS_INTERNAL_READ: AdcSettings = AdcSettings {
+const ADC_SETTINGS_INTERNAL_READ: AdcSettings<Average> = AdcSettings {
     clk_divider: Prescaler::Div64,
     sample_clock_cycles: 32,
-    accumulation: Accumulation::average(SampleCount::_4),
+    accumulation: Average::new(SampleCount::_4),
     vref: Reference::Intvcc1,
     offset_compensation: false,
     reference_compensation: false,
@@ -75,10 +81,10 @@ const ADC_SETTINGS_INTERNAL_READ: AdcSettings = AdcSettings {
 
 /// Based on Temperature log row information (NVM)x
 #[hal_cfg(any("adc-d21", "adc-d11"))]
-const ADC_SETTINGS_INTERNAL_READ_D21_TEMP: AdcSettings = AdcSettings {
+const ADC_SETTINGS_INTERNAL_READ_D21_TEMP: AdcSettings<Average> = AdcSettings {
     clk_divider: Prescaler::Div64,
     sample_clock_cycles: 32,
-    accumulation: Accumulation::average(SampleCount::_4),
+    accumulation: Average::new(SampleCount::_4),
     vref: Reference::Int1v,
     offset_compensation: false,
     reference_compensation: false,
@@ -207,30 +213,31 @@ pub trait AdcInstance {
     fn waker() -> &'static embassy_sync::waitqueue::AtomicWaker;
 }
 
+
 /// ADC Instance
 #[hal_cfg(any("adc-d11", "adc-d21"))]
-pub struct Adc<I: AdcInstance> {
+pub struct Adc<I: AdcInstance, A: Accumulation> {
     adc: I::Instance,
-    cfg: AdcSettings,
+    cfg: AdcSettings<A>,
     discard: bool,
 }
 
 /// ADC Instance
 #[hal_cfg("adc-d5x")]
-pub struct Adc<I: AdcInstance> {
+pub struct Adc<I: AdcInstance, A: Accumulation> {
     adc: I::Instance,
     _apbclk: crate::clock::v2::apb::ApbClk<I::ClockId>,
-    cfg: AdcSettings,
+    cfg: AdcSettings<A>,
     discard: bool,
 }
 
 #[cfg(feature = "async")]
-pub struct FutureAdc<I: AdcInstance, F> {
-    inner: Adc<I>,
+pub struct FutureAdc<I: AdcInstance, A: Accumulation, F> {
+    inner: Adc<I, A>,
     irqs: F,
 }
 
-impl<I: AdcInstance> Adc<I> {
+impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
     /// Construct a new ADC instance
     ///
     /// ## Important
@@ -250,7 +257,7 @@ impl<I: AdcInstance> Adc<I> {
     #[inline]
     pub(crate) fn new<PS: crate::clock::v2::pclk::PclkSourceId>(
         adc: I::Instance,
-        settings: AdcSettings,
+        settings: AdcSettings<A>,
         clk: crate::clock::v2::apb::ApbClk<I::ClockId>,
         pclk: &crate::clock::v2::pclk::Pclk<I::ClockId, PS>,
     ) -> Result<Self, Error> {
@@ -289,7 +296,7 @@ impl<I: AdcInstance> Adc<I> {
     #[inline]
     pub(crate) fn new(
         adc: I::Instance,
-        settings: AdcSettings,
+        settings: AdcSettings<A>,
         pm: &mut pac::Pm,
         clock: &crate::clock::AdcClock,
     ) -> Result<Self, Error> {
@@ -320,7 +327,7 @@ impl<I: AdcInstance> Adc<I> {
     #[cfg(feature = "async")]
     #[atsamd_hal_macros::hal_macro_helper]
     #[inline]
-    pub fn into_future<F>(self, irqs: F) -> FutureAdc<I, F>
+    pub fn into_future<F>(self, irqs: F) -> FutureAdc<I, A, F>
     where
         F: crate::async_hal::interrupts::Binding<I::Interrupt, async_api::InterruptHandler<I>>,
     {
@@ -333,16 +340,12 @@ impl<I: AdcInstance> Adc<I> {
     }
 }
 
-impl<I: AdcInstance> Adc<I> {
+impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
     /// Converts our ADC Reading (0-n) to the range 0.0-1.0, where
     /// 1.0 = 2^(reading_bitwidth)
     fn reading_to_f32(&self, raw: u16) -> f32 {
-        let max = match self.cfg.accumulation.output_resolution() {
-            Resolution::_16bit => 65535,
-            Resolution::_12bit => 4095,
-            Resolution::_10bit => 1023,
-            Resolution::_8bit => 255,
-        };
+        let max = 2u32.pow(AccumulationResolution::<A>::BITS) - 1;
+
         raw as f32 / max as f32
     }
 
@@ -351,9 +354,9 @@ impl<I: AdcInstance> Adc<I> {
     /// This is used mainly for internal voltage readings, where the ADC
     /// must be configured with specific settings for optimal and accurate
     /// reading
-    pub(crate) fn with_specific_settings<F: FnOnce(&mut Adc<I>) -> T, T>(
+    pub(crate) fn with_specific_settings<F: FnOnce(&mut Adc<I, A>) -> T, T>(
         &mut self,
-        settings: AdcSettings,
+        settings: AdcSettings<A>,
         f: F,
     ) -> T {
         let old_cfg = self.cfg;
@@ -516,8 +519,8 @@ impl<I: AdcInstance> Adc<I> {
 
     /// Retrieve the configured ADC sample resolution
     #[inline]
-    pub fn get_resolution(&self) -> Resolution {
-        self.cfg.accumulation.output_resolution()
+    pub fn get_resolution(&self) -> impl Resolution {
+        A::OutputResolution::default()
     }
 
     /// Return the underlying ADC PAC object.
@@ -546,7 +549,7 @@ impl<I: AdcInstance> Adc<I> {
     }
 }
 
-unsafe impl<I: AdcInstance> crate::dmac::Buffer for Adc<I> {
+unsafe impl<I: AdcInstance, A: Accumulation> crate::dmac::Buffer for Adc<I, A> {
     type Beat = u16;
 
     fn dma_ptr(&mut self) -> *mut Self::Beat {
@@ -562,21 +565,21 @@ unsafe impl<I: AdcInstance> crate::dmac::Buffer for Adc<I> {
     }
 }
 
-impl<I: AdcInstance> voltserver_hal::dma::Buffer<u16> for Adc<I> {
+impl<I: AdcInstance, A: Accumulation> voltserver_hal::dma::Buffer<u16> for Adc<I, A> {
     type Contents = [u16; 1];
 }
 
-impl<I: AdcInstance> voltserver_hal::dma::SrcBuffer<u16> for Adc<I> {}
+impl<I: AdcInstance, A: Accumulation> voltserver_hal::dma::SrcBuffer<u16> for Adc<I, A> {}
 
 #[cfg(feature = "async")]
 /// Implementation for async mode only methods
-impl<I: AdcInstance, F> FutureAdc<I, F>
+impl<I: AdcInstance, A: Accumulation, F> FutureAdc<I, A, F>
 where
     F: crate::async_hal::interrupts::Binding<I::Interrupt, async_api::InterruptHandler<I>>,
 {
     /// Convert the Async ADC back into a Blocking ADC, and return
     /// the IRQs
-    pub fn into_blocking(self) -> (Adc<I>, F) {
+    pub fn into_blocking(self) -> (Adc<I, A>, F) {
         (self.inner, self.irqs)
     }
 

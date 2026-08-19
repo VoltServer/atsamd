@@ -13,93 +13,10 @@ pub use adc0::ctrlb::Prescalerselect as Prescaler;
 pub use adc0::ctrla::Prescalerselect as Prescaler;
 
 pub use adc0::avgctrl::Samplenumselect as SampleCount;
-
-pub use adc0::ctrlb::Resselselect as Resolution;
-
+pub use adc0::ctrlb::Resselselect as ResolutionSelect;
 pub use adc0::refctrl::Refselselect as Reference;
 
-use super::{Adc, AdcInstance};
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum AdcResolution {
-    _8,
-    _10,
-    _12,
-}
-
-impl From<AdcResolution> for Resolution {
-    fn from(val: AdcResolution) -> Self {
-        match val {
-            AdcResolution::_8 => Resolution::_8bit,
-            AdcResolution::_10 => Resolution::_10bit,
-            AdcResolution::_12 => Resolution::_12bit,
-        }
-    }
-}
-
-/// Result accumulation strategy for the ADC
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Accumulation {
-    /// The ADC will read once and then the result is ready.
-    ///
-    /// The result will be in the users chosen bitwidth
-    Single(AdcResolution),
-    /// The ADC will read [SampleCount] samples, average them out
-    /// and then the result is ready.
-    ///
-    /// The result will be in the range of 0-4095 (12bit)
-    Average(SampleCount),
-    /// The ADC will read [SampleCount] samples, sum them
-    /// into a 16 bit wide value, and then the result is ready.
-    ///
-    /// The result will be in the range of 0-65535 (16bit),
-    /// but will consist of the sum of multiple 12bit reads
-    Summed(SampleCount),
-}
-
-impl Accumulation {
-    /// Read the ADC once
-    pub const fn single(res: AdcResolution) -> Self {
-        Self::Single(res)
-    }
-
-    /// Accumulate multiple samples and average together
-    pub const fn average(count: SampleCount) -> Self {
-        Self::Average(count)
-    }
-
-    /// Accumulate multiple samples and add them together
-    pub const fn summed(count: SampleCount) -> Self {
-        Self::Summed(count)
-    }
-
-    pub(crate) fn resolution(&self) -> Resolution {
-        if let Self::Single(res) = self {
-            (*res).into()
-        } else {
-            Resolution::_16bit
-        }
-    }
-
-    pub(crate) fn output_resolution(&self) -> Resolution {
-        if let Self::Single(res) = self {
-            (*res).into()
-        } else if let Self::Average(_) = self {
-            Resolution::_12bit
-        } else {
-            Resolution::_16bit
-        }
-    }
-
-    pub(crate) fn samples(&self) -> u16 {
-        match self {
-            Accumulation::Single(_) => 1,
-            // Samplenumselect is 2^n to get number of samples
-            Accumulation::Average(samplenumselect) => 2u16.pow(*samplenumselect as u32),
-            Accumulation::Summed(samplenumselect) => 2u16.pow(*samplenumselect as u32),
-        }
-    }
-}
+use super::{Adc, AdcInstance, Accumulation, Resolution, AccumulationResolution};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -147,10 +64,10 @@ impl From<super::Error> for BuilderError {
 /// SPS = (GCLK_ADC / clk_divider) / (n * (sample_clock_cycles + 12))
 /// ```
 #[derive(Copy, Clone)]
-pub struct AdcBuilder {
+pub struct AdcBuilder<A: Accumulation> {
     pub clk_divider: Option<Prescaler>,
     pub sample_clock_cycles: Option<u8>,
-    pub accumulation: Accumulation,
+    pub accumulation: A,
     pub vref: Option<Reference>,
     pub offset_compensation: Option<bool>,
     pub reference_compensation: Option<bool>,
@@ -161,10 +78,10 @@ pub struct AdcBuilder {
 /// Version of [AdcBuilder] without any optional settings.
 /// [AdcBuilder] is converted to this when passed to the ADC
 #[derive(Copy, Clone, PartialEq)]
-pub(crate) struct AdcSettings {
+pub(crate) struct AdcSettings<A: Accumulation> {
     pub clk_divider: Prescaler,
     pub sample_clock_cycles: u8,
-    pub accumulation: Accumulation,
+    pub accumulation: A,
     pub vref: Reference,
     pub offset_compensation: bool,
     pub reference_compensation: bool,
@@ -172,9 +89,9 @@ pub(crate) struct AdcSettings {
     pub auto_rail_to_rail: bool,
 }
 
-impl AdcBuilder {
+impl<A: Accumulation> AdcBuilder<A> {
     /// Create a new settings builder
-    pub fn new(accumulation_method: Accumulation) -> Self {
+    pub fn new(accumulation_method: A) -> Self {
         Self {
             clk_divider: None,
             sample_clock_cycles: None,
@@ -195,7 +112,7 @@ impl AdcBuilder {
         Ok(())
     }
 
-    pub(crate) fn to_settings(self) -> Result<AdcSettings, BuilderError> {
+    pub(crate) fn to_settings(self) -> Result<AdcSettings<A>, BuilderError> {
         self.check_params()?;
         Ok(AdcSettings {
             clk_divider: self.clk_divider.unwrap(),
@@ -245,17 +162,12 @@ impl AdcBuilder {
 
         let div = self.clk_divider.unwrap() as u32;
         let adc_clk_freq = clock_freq / div;
-
-        let bit_width = match self.accumulation.resolution() {
-            Resolution::_16bit => 16,
-            Resolution::_12bit => 12,
-            Resolution::_10bit => 10,
-            Resolution::_8bit => 8,
-        };
+        let bit_width = AccumulationResolution::<A>::BITS;
 
         let mut clocks_per_sample = self.sample_clock_cycles.unwrap() as u32 + bit_width;
 
-        let samples = self.accumulation.samples();
+        //let samples = self.accumulation.samples();
+        let samples = 2u32.pow(self.accumulation.sample_count() as u8 as u32);
         clocks_per_sample *= samples as u32;
         Ok(adc_clk_freq / clocks_per_sample)
     }
@@ -309,7 +221,7 @@ impl AdcBuilder {
         adc: I::Instance,
         clk: crate::clock::v2::apb::ApbClk<I::ClockId>,
         pclk: &crate::clock::v2::pclk::Pclk<I::ClockId, PS>,
-    ) -> Result<Adc<I>, BuilderError> {
+    ) -> Result<Adc<I, A>, BuilderError> {
         let settings = self.to_settings()?;
         Adc::new(adc, settings, clk, pclk).map_err(|e| e.into())
     }
@@ -321,7 +233,7 @@ impl AdcBuilder {
         adc: I::Instance,
         pm: &mut crate::pac::Pm,
         clock: &crate::clock::AdcClock,
-    ) -> Result<Adc<I>, BuilderError> {
+    ) -> Result<Adc<I, A>, BuilderError> {
         let settings = self.to_settings()?;
         Adc::new(adc, settings, pm, clock).map_err(|e| e.into())
     }

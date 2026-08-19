@@ -7,13 +7,11 @@ use pac::Supc;
 use super::{FutureAdc, async_api};
 
 use super::{
-    ADC_SETTINGS_INTERNAL_READ, Accumulation, Adc, AdcInstance, AdcSettings, Error, Flags,
-    PrimaryAdc, SampleCount, SampleMode, Resolution, PTAT, CTAT, GND, CpuVoltageSource, PosChannel,
-    NegChannel,
+    ADC_SETTINGS_INTERNAL_READ, Accumulation, AccumulationResolution, Average, Adc, AdcInstance,
+    AdcSettings, Error, Flags, PrimaryAdc, SampleCount, SampleMode, Resolution, PTAT, CTAT, GND,
+    CpuVoltageSource, PosChannel, NegChannel,
 };
 use crate::{calibration, pac, evsys};
-
-
 
 pub trait AdcStartMux: evsys::UsrId {
     type Instance: AdcInstance;
@@ -24,7 +22,6 @@ impl AdcStartMux for evsys::Adc0Start {
 impl AdcStartMux for evsys::Adc1Start {
     type Instance = Adc1;
 }
-
 
 /// ADC instance 0
 pub struct Adc0 {
@@ -120,10 +117,10 @@ impl AdcInstance for Adc1 {
 }
 
 
-impl<I: AdcInstance> Adc<I> {
+impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
     #[inline]
     /// Configures the ADC.
-    pub(crate) fn configure(&mut self, cfg: AdcSettings) {
+    pub(crate) fn configure(&mut self, cfg: AdcSettings<A>) {
         if cfg != self.cfg {
             // Set discard flag for next read
             self.discard = true;
@@ -137,7 +134,7 @@ impl<I: AdcInstance> Adc<I> {
         self.sync();
         self.adc
             .ctrlb()
-            .modify(|_, w| w.ressel().variant(cfg.accumulation.resolution()));
+            .modify(|_, w| w.ressel().variant(cfg.accumulation.resselect()));
         self.sync();
 
         let samplen = match cfg.offset_compensation {
@@ -151,20 +148,9 @@ impl<I: AdcInstance> Adc<I> {
                 w.offcomp().bit(cfg.offset_compensation)
             });
         self.sync();
-        let (sample_cnt, adjres) = match cfg.accumulation {
-            // 1 sample to be used as is
-            Accumulation::Single(_) => (SampleCount::_1, 0),
-            // A total of `adc_sample_count` elements will be averaged by the ADC
-            // before it returns the result
-            // Table 45-3 SAMx5x datasheet
-            Accumulation::Average(cnt) => (cnt, core::cmp::min(cnt as u8, 0x04)),
-            // A total of `adc_sample_count` elements will be summed by the ADC
-            // before it returns the result
-            Accumulation::Summed(cnt) => (cnt, 0),
-        };
         self.adc.avgctrl().modify(|_, w| {
-            w.samplenum().variant(sample_cnt);
-            unsafe { w.adjres().bits(adjres) }
+            w.samplenum().variant(cfg.accumulation.sample_count());
+            unsafe { w.adjres().bits(cfg.accumulation.division_factor() as u8) }
         });
         self.sync();
         self.set_reference(cfg.vref);
@@ -178,7 +164,7 @@ impl<I: AdcInstance> Adc<I> {
     }
 }
 
-impl<I: AdcInstance + PrimaryAdc> Adc<I> {
+impl<I: AdcInstance + PrimaryAdc> Adc<I, Average> {
     #[inline]
     /// Reads the CPU temperature in degrees C.
     ///
@@ -222,7 +208,7 @@ impl<I: AdcInstance + PrimaryAdc> Adc<I> {
     }
 }
 
-impl<I: AdcInstance> Adc<I> {
+impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
     #[inline]
     pub(super) fn sync(&self) {
         // Slightly more performant than checking the individual bits
@@ -334,14 +320,8 @@ impl<I: AdcInstance> Adc<I> {
     #[inline]
     pub(super) fn conversion_result(&self) -> u16 {
         let shift_amt = if self.cfg.auto_left_adjust
-                && self.adc.ctrlb().read().leftadj().bit_is_set()
-                && let Accumulation::Single(_) = self.cfg.accumulation {
-            match self.cfg.accumulation.output_resolution() {
-                Resolution::_8bit => 8,
-                Resolution::_10bit => 6,
-                Resolution::_12bit => 4,
-                Resolution::_16bit => 0,
-            }
+                && self.adc.ctrlb().read().leftadj().bit_is_set() {
+            u16::BITS - AccumulationResolution::<A>::BITS
         } else {
             0
         };
@@ -444,7 +424,7 @@ impl<I: AdcInstance> Adc<I> {
 }
 
 #[cfg(feature = "async")]
-impl<I: AdcInstance + PrimaryAdc, F> FutureAdc<I, F>
+impl<I: AdcInstance + PrimaryAdc, A: Accumulation, F> FutureAdc<I, A, F>
 where
     F: crate::async_hal::interrupts::Binding<I::Interrupt, async_api::InterruptHandler<I>>,
 {
