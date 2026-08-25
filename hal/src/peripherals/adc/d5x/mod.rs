@@ -9,7 +9,7 @@ use super::{
     ADC_SETTINGS_INTERNAL_READ, Accumulation, Adc, AdcInstance, AdcSettings, CpuVoltageSource,
     Error, Flags, PrimaryAdc, SampleCount,
 };
-use crate::{calibration, pac, evsys};
+use crate::{calibration, pac};
 
 /// ADC instance 0
 pub struct Adc0 {
@@ -17,9 +17,6 @@ pub struct Adc0 {
 }
 
 impl PrimaryAdc for Adc0 {}
-impl crate::typelevel::Sealed for Adc0 {}
-unsafe impl evsys::User<evsys::Adc0Start> for Adc0 {}
-unsafe impl evsys::User<evsys::Adc0Sync> for Adc0 {}
 
 impl AdcInstance for Adc0 {
     type Instance = pac::Adc0;
@@ -69,10 +66,6 @@ fn tp_tc_to_temp(tp: f32, tc: f32) -> f32 {
 pub struct Adc1 {
     _adc: pac::Adc1,
 }
-
-impl crate::typelevel::Sealed for Adc1 {}
-unsafe impl evsys::User<evsys::Adc1Start> for Adc1 {}
-unsafe impl evsys::User<evsys::Adc1Sync> for Adc1 {}
 
 impl AdcInstance for Adc1 {
     type Instance = pac::Adc1;

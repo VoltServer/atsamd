@@ -1,4 +1,4 @@
-use super::UsrId;
+use super::UserId;
 use core::marker::PhantomData;
 use paste::paste;
 
@@ -9,7 +9,7 @@ use crate::pac::{
 
 use pac::evsys as user_regs;
 
-pub(super) trait Register<Id: UsrId> {
+pub(super) trait Register<Id: UserId> {
     /// Get a shared reference to the underlying PAC object
     fn evsys(&self) -> &Evsys;
 
@@ -23,14 +23,14 @@ macro_rules! reg_proxy {
     (@new $reg:ident) => {
         paste! {
             /// Register proxy tied to a specific channel
-            pub(super) struct [< $reg:camel Proxy >]<Id: UsrId, REG> {
+            pub(super) struct [< $reg:camel Proxy >]<Id: UserId, REG> {
                 #[allow(unused)]
                 evsys: Evsys,
                 _id: PhantomData<Id>,
                 _reg: PhantomData<REG>,
             }
 
-            impl<Id: UsrId> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> {
+            impl<Id: UserId> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> {
                 /// Create a new register proxy
                 #[inline]
                 pub fn new() -> Self {
@@ -45,7 +45,7 @@ macro_rules! reg_proxy {
                 }
             }
 
-            impl<Id: UsrId> Register<Id> for [< $reg:camel Proxy >]<Id, [< $reg:camel >]> {
+            impl<Id: UserId> Register<Id> for [< $reg:camel Proxy >]<Id, [< $reg:camel >]> {
                 fn evsys(&self) -> &Evsys {
                     &self.evsys
                 }
@@ -56,7 +56,7 @@ macro_rules! reg_proxy {
     // Internal rule for a Read-enabled register
     (@read_reg $reg:ident) => {
         paste! {
-            impl<Id> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> where Id: UsrId, [< $reg:camel Spec >]: pac::generic::Readable {
+            impl<Id> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> where Id: UserId, [< $reg:camel Spec >]: pac::generic::Readable {
                 #[inline]
                 #[allow(dead_code)]
                 pub fn read(&mut self) -> user_regs::[< $reg:lower >]::R {
@@ -69,7 +69,7 @@ macro_rules! reg_proxy {
     // Internal rule for a Write-enabled register
     (@write_reg $reg:ident) => {
         paste! {
-            impl<Id> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> where Id: UsrId, [< $reg:camel Spec >]: pac::generic::Writable {
+            impl<Id> [< $reg:camel Proxy >]<Id, [< $reg:camel >]> where Id: UserId, [< $reg:camel Spec >]: pac::generic::Writable {
                 #[inline]
                 #[allow(dead_code)]
                 pub fn write<F>(&mut self, func: F)
@@ -106,7 +106,7 @@ macro_rules! reg_proxy {
             reg_proxy!(@write_reg $reg);
 
             impl<Id>[< $reg:camel Proxy >]<Id, [< $reg:camel >]> where
-                Id: UsrId,
+                Id: UserId,
                 [< $reg:camel Spec >]: pac::generic::Writable + pac::generic::Readable
             {
                 #[inline]
@@ -127,11 +127,11 @@ macro_rules! reg_proxy {
 
 reg_proxy!(user, register, rw);
 
-pub(super) struct RegisterBlock<Id: UsrId> {
+pub(super) struct RegisterBlock<Id: UserId> {
     pub user: UserProxy<Id, User>,
 }
 
-impl<Id: UsrId> RegisterBlock<Id> {
+impl<Id: UserId> RegisterBlock<Id> {
     pub(super) fn new() -> Self {
         Self {
             user: UserProxy::new(),
@@ -139,7 +139,7 @@ impl<Id: UsrId> RegisterBlock<Id> {
     }
 }
 
-impl<Id: UsrId> Drop for RegisterBlock<Id> {
+impl<Id: UserId> Drop for RegisterBlock<Id> {
     fn drop(&mut self) {
         // Disable event propagation for this user when dropped
         // SAFTEY: Safe since this is the value at reset
