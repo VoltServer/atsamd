@@ -3,8 +3,8 @@ use voltserver_hal::{
     dma::{ReadableDstBuffer},
 };
 use crate::adc::{
-    Adc, AdcInstance, AdcStartMux, Flags, SampleMode, GND, PosChannel, NegChannel, PosAdcPin,
-    NegAdcPin, Resolution, Accumulation, AccumulationResolution,
+    Adc, AdcResultBuffer, AdcInstance, Flags, SampleMode, GND, PosChannel, NegChannel,
+    PosAdcPin, NegAdcPin, Resolution, Accumulation, AccumulationResolution,
     sample::{SignedSample, UnsignedSample}
 };
 use core::marker::PhantomData;
@@ -21,12 +21,13 @@ where
     A: Accumulation,
     E: evsys::OptionEvent,
     P: PosChannel<I>,
-    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = AdcResultBuffer<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     adc: Adc<I, A>,
     dma_transfer: T,
     event: E,
+    oneshot: bool,
     _pos: PhantomData<P>,
 }
 
@@ -37,7 +38,7 @@ where
     A: Accumulation,
     E: evsys::OptionEvent,
     P: PosChannel<I>,
-    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = AdcResultBuffer<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     type Error = crate::adc::Error;
@@ -53,22 +54,23 @@ where
     I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
-    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
+    B: dmac::AnyBufferPair<Src = AdcResultBuffer<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
     T: dmac::AnyTransfer<Buf = B>,
 {
     /// Create a single-ended software-only triggered capture for an ADC channel
-    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T) -> Self {
+    pub(crate) fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T, oneshot: bool) -> Self {
         Self {
             adc,
             dma_transfer,
             event: NoneT::default(),
+            oneshot,
             _pos: PhantomData,
         }
     }
 
     /// Create a single-ended software-only triggered capture for an ADC pin
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T) -> Self {
-        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
+    pub(crate) fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T, oneshot: bool) -> Self {
+        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer, oneshot)
     }
 
     /// Check for DMA or ADC peripheral error
@@ -88,7 +90,7 @@ where
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
@@ -101,10 +103,10 @@ where
     fn start(mut self) -> Result<Self::InProgress, Self::Error> {
         // Flush and configure the ADC, clearing any stale flags
         self.adc.disable_start_events();
+        self.adc.disable_freerunning();
         self.adc.flush();
         self.adc.disable_interrupts(Flags::all());
         self.adc.clear_all_flags();
-        self.adc.disable_freerunning();
         self.adc.set_sample_mode(SampleMode::SingleEnded);
         self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
 
@@ -113,15 +115,16 @@ where
         let mut started_transfer = self.dma_transfer.begin();
         started_transfer.channel_error()?;
 
-        // Start ADC (and check for errors)
-        self.adc.enable_start_events();
-        let adc_flags = self.adc.read_flags();
-        self.adc.check_overrun(&adc_flags)?;
+        // Enable freerunning (if confgured for oneshot capture)
+        if self.oneshot {
+            self.adc.enable_freerunning()
+        }
 
         Ok(Self::InProgress {
             adc: self.adc,
             dma_transfer: started_transfer,
             event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         })
     }
@@ -133,7 +136,7 @@ where
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
@@ -168,12 +171,18 @@ where
     }
 
     fn stop(mut self) -> Result<Self::Complete, Self::Error> {
+        self.adc.disable_start_events();
+        self.adc.disable_freerunning();
+        self.adc.flush();
+        self.adc.disable_interrupts(Flags::all());
+
         self.check_for_errors()?;
 
         Ok(Self::Complete {
             adc: self.adc,
             dma_transfer: self.dma_transfer.stop(),
             event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         })
     }
@@ -185,7 +194,7 @@ where
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
@@ -200,192 +209,7 @@ where
             adc: self.adc,
             dma_transfer: self.dma_transfer.reset(),
             event: self.event,
-            _pos: PhantomData,
-        }
-    }
-
-    fn convert(mut self) -> Result<(Self::Ready, Self::Output), Self::Error> {
-        //TODO: can this use the unsafe from_array_unchecked? Do we need to verify samples coming
-        // from DMA?
-        let samples = Self::Sample::from_array(
-                self.dma_transfer.borrow_destination().read(),
-                self.adc.check_left_adjust(),
-            )
-            .ok_or(Self::Error::SampleOverflow)?;
-
-        Ok((self.reset(), samples))
-    }
-}
-
-//==============================================================================
-// Freerunning SingleEndedCapture (E = Freerun)
-//==============================================================================
-impl<const N: usize, I, A, P, B, T> SingleEndedCapture<N, I, A, P, B, T, Freerun>
-where
-    I: AdcInstance,
-    A: Accumulation,
-    P: PosChannel<I>,
-    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
-    T: dmac::AnyTransfer<Buf = B>,
-{
-    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T) -> Self {
-        Self {
-            adc,
-            dma_transfer,
-            event: Freerun::default(),
-            _pos: PhantomData,
-        }
-    }
-
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T) -> Self {
-        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer)
-    }
-
-    fn check_for_errors(&mut self) -> Result<(), <Self as Capture>::Error> {
-        let adc_flags = self.adc.read_flags();
-        self.adc.check_overrun(&adc_flags)?;
-        self.dma_transfer.channel_error()?;
-
-        Ok(())
-    }
-}
-
-impl<const N: usize, I, A, P, B, T, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
-where
-    I: AdcInstance,
-    A: Accumulation,
-    P: PosChannel<I>,
-    B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
-            + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
-        >,
-    T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
-    BusyXfer: dmac::BusyTransfer<Buf = B>,
-{
-    type InProgress = SingleEndedCapture<N, I, A, P, B, BusyXfer, Freerun>;
-
-    fn start(mut self) -> Result<Self::InProgress, Self::Error> {
-        // Flush and configure the ADC, clearing any stale flags
-        self.adc.disable_start_events();
-        self.adc.flush();
-        self.adc.disable_interrupts(Flags::all());
-        self.adc.clear_all_flags();
-        self.adc.disable_freerunning();
-        self.adc.set_sample_mode(SampleMode::SingleEnded);
-        self.adc.mux(P::MUXVAL, GND::<I>::MUXVAL);
-
-        // Start DMA channel (& check for errors)
-        self.dma_transfer.clear_channel_errors();
-        let mut started_transfer = self.dma_transfer.begin();
-        started_transfer.channel_error()?;
-
-        // Configure the ADC for freerunning mode
-        self.adc.enable_freerunning();
-
-        Ok(Self::InProgress {
-            adc: self.adc,
-            dma_transfer: started_transfer,
-            event: self.event,
-            _pos: PhantomData,
-        })
-    }
-}
-
-impl<const N: usize, I, A, P, B, T, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
-where
-    I: AdcInstance,
-    A: Accumulation,
-    P: PosChannel<I>,
-    B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
-            + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
-        >,
-    T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
-    CompleteXfer: dmac::CompleteTransfer<Buf = B>,
-{
-    type Complete = SingleEndedCapture<N, I, A, P, B, CompleteXfer, Freerun>;
-
-    fn trigger(&mut self) -> Result<(), Self::Error> {
-        self.check_for_errors()?;
-
-        // Trigger the ADC directly (no event)
-        // this will initiate the entire capture
-        self.adc.start_conversion();
-        Ok(())
-    }
-
-    fn is_complete(&mut self) -> Result<bool, Self::Error> {
-        self.check_for_errors()?;
-
-        Ok(self.dma_transfer.is_complete())
-    }
-
-    fn wait(&mut self) -> Result<(), Self::Error> {
-        self.check_for_errors()?;
-
-        while !self.dma_transfer.is_complete() {}
-
-        self.check_for_errors()?;
-
-        Ok(())
-    }
-
-    fn stop(mut self) -> Result<Self::Complete, Self::Error> {
-
-        // Stop the ADC from starting any more conversions
-        self.adc.disable_freerunning();
-
-        // Stop DMA transfer
-        let dma_complete = self.dma_transfer.is_complete();
-        let mut transfer = self.dma_transfer.stop();
-
-        // Check for DMA errors
-        transfer.channel_error()?;
-
-        // Check for ADC errors (if DMA hadn't already completed)
-        if !dma_complete {
-            let adc_flags = self.adc.read_flags();
-            self.adc.check_overrun(&adc_flags)?;
-        }
-
-        // Clear all peripheral flags
-        self.adc.clear_all_flags();
-        //TODO: clear DMA channel flags?
-
-        Ok(Self::Complete {
-            adc: self.adc,
-            dma_transfer: transfer,
-            event: self.event,
-            _pos: PhantomData,
-        })
-    }
-}
-
-impl<const N: usize, I, A, P, B, T, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T, Freerun>
-where
-    I: AdcInstance,
-    A: Accumulation,
-    P: PosChannel<I>,
-    B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
-        Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
-            + ReadableDstBuffer<BufferPairBeat<B>,
-                Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
-        >,
-    T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
-    ReadyXfer: dmac::ReadyTransfer<Buf = B>
-{
-    type Ready = SingleEndedCapture<N, I, A, P, B, ReadyXfer, Freerun>;
-
-    fn reset(self) -> Self::Ready {
-        Self::Ready {
-            adc: self.adc,
-            dma_transfer: self.dma_transfer.reset(),
-            event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         }
     }
@@ -406,44 +230,44 @@ where
 //==============================================================================
 // Event-triggered SingleEndedCapture
 //==============================================================================
-impl<const N: usize, I, A, P, B, T, E, M> SingleEndedCapture<N, I, A, P, B, T, E>
+impl<const N: usize, I, A, P, B, T, E> SingleEndedCapture<N, I, A, P, B, T, E>
 where
-    I: AdcInstance + evsys::User<M>,
+    I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
-    B: dmac::AnyBufferPair<Src = Adc<I, A>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
+    B: dmac::AnyBufferPair<Src = AdcResultBuffer<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>>,
+    //B: dmac::AnyBufferPair<Src = AdcResultBuffer<I>, Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count> + ReadableDstBuffer<BufferPairBeat<B>>>,
     T: dmac::ReadyTransfer<Buf = B>,
-    E: evsys::AnyEvent<UserMux = M>,
-    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<User: evsys::AnyUser<UserId = I::StartEventId>>,
 {
-    fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T, event: E) -> Self {
+    pub fn from_channel(adc: Adc<I, A>, _pos: P, dma_transfer: T, event: E, oneshot: bool) -> Self {
         Self {
             adc,
             dma_transfer,
             event,
+            oneshot,
             _pos: PhantomData,
         }
     }
 
-    fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T, event: E) -> Self {
-        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer, event)
+    pub fn from_pin<Pin: PosAdcPin<I, Channel = P>>(adc: Adc<I, A>, _pin: Pin, dma_transfer: T, event: E, oneshot: bool) -> Self {
+        Self::from_channel(adc, <Pin as PosAdcPin<I>>::Channel::get_channel(), dma_transfer, event, oneshot)
     }
 }
 
-impl<const N: usize, I, A, P, B, T, E, M, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, BusyXfer> ReadyCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
-    I: AdcInstance + evsys::User<M>,
+    I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::ReadyTransfer<Buf = B, Busy = BusyXfer>,
-    E: evsys::AnyEvent<UserMux = M>,
-    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<User: evsys::AnyUser<UserId = I::StartEventId>>,
     BusyXfer: dmac::BusyTransfer<Buf = B>,
 {
     type InProgress = SingleEndedCapture<N, I, A, P, B, BusyXfer, E>;
@@ -462,10 +286,16 @@ where
         self.dma_transfer.clear_channel_errors();
         let mut started_transfer = self.dma_transfer.begin();
 
+        // Enable freerunning if configured for oneshot capture
+        if self.oneshot {
+            self.adc.enable_freerunning()
+        }
+
         // Enable ADC START event input
         self.adc.enable_start_events();
         started_transfer.channel_error()?;
 
+        // Check for any ADC errors
         let adc_flags = self.adc.read_flags();
         self.adc.check_overrun(&adc_flags)?;
 
@@ -477,25 +307,25 @@ where
             adc: self.adc,
             dma_transfer: started_transfer,
             event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, A, P, B, T, E, M> SingleEndedCapture<N, I, A, P, B, T, E>
+impl<const N: usize, I, A, P, B, T, E> SingleEndedCapture<N, I, A, P, B, T, E>
 where
-    I: AdcInstance + evsys::User<M>,
+    I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B>,
-    E: evsys::AnyEvent<UserMux = M>,
-    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<User: evsys::AnyUser<UserId = I::StartEventId>>,
 {
     /// Check for DMA, ADC, or EVSYS peripheral errors
     fn check_for_errors(&mut self) -> Result<(), <Self as Capture>::Error> {
@@ -511,20 +341,19 @@ where
     }
 }
 
-impl<const N: usize, I, A, P, B, T, E, M, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, CompleteXfer> InProgressCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
-    I: AdcInstance + evsys::User<M>,
+    I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::BusyTransfer<Buf = B, Complete = CompleteXfer>,
-    E: evsys::AnyEvent<UserMux = M>,
-    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<User: evsys::AnyUser<UserId = I::StartEventId>>,
     CompleteXfer: dmac::CompleteTransfer<Buf = B>
 {
     type Complete = SingleEndedCapture<N, I, A, P, B, CompleteXfer, E>;
@@ -582,25 +411,25 @@ where
             adc: self.adc,
             dma_transfer: transfer,
             event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         })
     }
 }
 
-impl<const N: usize, I, A, P, B, T, E, M, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T, E>
+impl<const N: usize, I, A, P, B, T, E, ReadyXfer> CompleteCapture for SingleEndedCapture<N, I, A, P, B, T, E>
 where
-    I: AdcInstance + evsys::User<M>,
+    I: AdcInstance,
     A: Accumulation,
     P: PosChannel<I>,
     B: dmac::AnyBufferPair<
-        Src = Adc<I, A>,
+        Src = AdcResultBuffer<I>,
         Dst: dmac::Buffer<Beat = <UnsignedSample<AccumulationResolution<A>> as RawSample>::Count>
             + ReadableDstBuffer<BufferPairBeat<B>,
                 Contents = [<UnsignedSample<AccumulationResolution<A>> as RawSample>::Count; N]>
         >,
     T: dmac::CompleteTransfer<Buf = B, Ready = ReadyXfer>,
-    E: evsys::AnyEvent<UserMux = M>,
-    M: AdcStartMux<Instance = I>,
+    E: evsys::AnyEvent<User: evsys::AnyUser<UserId = I::StartEventId>>,
     ReadyXfer: dmac::ReadyTransfer<Buf = B>
 {
     type Ready = SingleEndedCapture<N, I, A, P, B, ReadyXfer, E>;
@@ -610,6 +439,7 @@ where
             adc: self.adc,
             dma_transfer: self.dma_transfer.reset(),
             event: self.event,
+            oneshot: self.oneshot,
             _pos: PhantomData,
         }
     }
@@ -713,12 +543,3 @@ where
 //        todo!()
 //    }
 //}
-
-pub struct Freerun {}
-impl evsys::OptionEvent for Freerun {}
-
-impl Default for Freerun {
-    fn default() -> Self {
-        Freerun {}
-    }
-}

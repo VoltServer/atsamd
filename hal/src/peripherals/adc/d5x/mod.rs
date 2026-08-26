@@ -13,16 +13,6 @@ use super::{
 };
 use crate::{calibration, pac};
 
-pub trait AdcStartMux: evsys::UsrId {
-    type Instance: AdcInstance;
-}
-impl AdcStartMux for evsys::Adc0Start {
-    type Instance = Adc0;
-}
-impl AdcStartMux for evsys::Adc1Start {
-    type Instance = Adc1;
-}
-
 /// ADC instance 0
 pub struct Adc0 {
     _adc: pac::Adc0,
@@ -37,6 +27,10 @@ impl AdcInstance for Adc0 {
 
     #[cfg(feature = "async")]
     type Interrupt = crate::async_hal::interrupts::ADC0;
+
+    type StartEventId = crate::evsys::Adc0Start;
+
+    type SyncEventId = crate::evsys::Adc0Sync;
 
     #[inline]
     fn peripheral_reg_block(p: &mut pac::Peripherals) -> &pac::adc0::RegisterBlock {
@@ -86,6 +80,10 @@ impl AdcInstance for Adc1 {
 
     #[cfg(feature = "async")]
     type Interrupt = crate::async_hal::interrupts::ADC1;
+
+    type StartEventId = crate::evsys::Adc1Start;
+
+    type SyncEventId = crate::evsys::Adc1Sync;
 
     #[inline]
     fn peripheral_reg_block(p: &mut pac::Peripherals) -> &pac::adc0::RegisterBlock {

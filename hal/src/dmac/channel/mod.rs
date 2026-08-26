@@ -45,7 +45,7 @@ use super::{
     sram::{self, DmacDescriptor},
     transfer::{BufferPair, Transfer},
 };
-use crate::typelevel::{Is, Sealed};
+use crate::typelevel::{Is, Sealed, NoneT};
 use modular_bitfield::prelude::*;
 
 mod reg;
@@ -182,6 +182,14 @@ where
         self
     }
 }
+
+//==============================================================================
+// OptionChannel
+//==============================================================================
+pub trait OptionChannel {}
+impl OptionChannel for NoneT {}
+impl<C: AnyChannel> OptionChannel for C {}
+
 
 //==============================================================================
 // Channel

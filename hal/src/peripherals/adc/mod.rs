@@ -24,6 +24,7 @@
 
 use crate::{gpio::AnyPin, typelevel::Sealed, dmac, evsys};
 use core::ops::Deref;
+use core::marker::PhantomData;
 
 use atsamd_hal_macros::{hal_cfg, hal_module, hal_macro_helper};
 use pac::Peripherals;
@@ -43,8 +44,7 @@ mod async_api;
 #[cfg(feature = "async")]
 pub use async_api::*;
 
-mod capture;
-pub use capture::*;
+pub mod capture;
 
 mod builder;
 pub use builder::*;
@@ -202,6 +202,10 @@ pub trait AdcInstance {
     #[hal_cfg("adc-d5x")]
     type ClockId: crate::clock::v2::apb::ApbId + crate::clock::v2::pclk::PclkId;
 
+    type StartEventId: evsys::AsyncUserId;
+
+    type SyncEventId: evsys::AsyncUserId;
+
     fn peripheral_reg_block(p: &mut Peripherals) -> &adc0::RegisterBlock;
 
     #[hal_cfg(any("adc-d11", "adc-d21"))]
@@ -213,12 +217,24 @@ pub trait AdcInstance {
     fn waker() -> &'static embassy_sync::waitqueue::AtomicWaker;
 }
 
+pub struct AdcResultBuffer<I> {
+    _instance: PhantomData<I>,
+}
+
+impl<I: AdcInstance> AdcResultBuffer<I> {
+    fn new() -> Self {
+        Self {
+            _instance: PhantomData,
+        }
+    }
+}
 
 /// ADC Instance
 #[hal_cfg(any("adc-d11", "adc-d21"))]
 pub struct Adc<I: AdcInstance, A: Accumulation> {
     adc: I::Instance,
     cfg: AdcSettings<A>,
+    result_buffer: Option<AdcResultBuffer<I>>,
     discard: bool,
 }
 
@@ -228,6 +244,7 @@ pub struct Adc<I: AdcInstance, A: Accumulation> {
     adc: I::Instance,
     _apbclk: crate::clock::v2::apb::ApbClk<I::ClockId>,
     cfg: AdcSettings<A>,
+    result_buffer: Option<AdcResultBuffer<I>>,
     discard: bool,
 }
 
@@ -279,6 +296,7 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
             adc,
             _apbclk: clk,
             cfg: settings,
+            result_buffer: Some(AdcResultBuffer::new()),
             discard: true,
         };
         new_adc.configure(settings);
@@ -309,6 +327,7 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
         let mut new_adc = Self {
             adc,
             cfg: settings,
+            result_buffer: Some(AdcResultBuffer::new()),
             discard: true,
         };
         new_adc.configure(settings);
@@ -547,9 +566,19 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
         self.adc.ctrla().modify(|_, w| w.swrst().set_bit());
         self.sync();
     }
+
+    pub fn dma_buffer_take(&mut self) -> Option<AdcResultBuffer<I>> {
+        self.result_buffer.take()
+    }
+
+    pub fn dma_buffer_return(&mut self, buffer: AdcResultBuffer<I>) {
+        if self.result_buffer.is_none() {
+            self.result_buffer = Some(buffer)
+        }
+    }
 }
 
-unsafe impl<I: AdcInstance, A: Accumulation> crate::dmac::Buffer for Adc<I, A> {
+unsafe impl<I: AdcInstance> crate::dmac::Buffer for AdcResultBuffer<I> {
     type Beat = u16;
 
     fn dma_ptr(&mut self) -> *mut Self::Beat {
@@ -565,11 +594,21 @@ unsafe impl<I: AdcInstance, A: Accumulation> crate::dmac::Buffer for Adc<I, A> {
     }
 }
 
-impl<I: AdcInstance, A: Accumulation> voltserver_hal::dma::Buffer<u16> for Adc<I, A> {
+impl crate::dmac::PeripheralBuffer for AdcResultBuffer<Adc0> {
+    const TRIG_SRC: crate::dmac::TriggerSource = crate::dmac::TriggerSource::Adc0Resrdy;
+}
+
+impl crate::dmac::PeripheralBuffer for AdcResultBuffer<Adc1> {
+    const TRIG_SRC: crate::dmac::TriggerSource = crate::dmac::TriggerSource::Adc1Resrdy;
+}
+
+impl<I: AdcInstance> voltserver_hal::dma::Buffer<u16> for AdcResultBuffer<I> {
     type Contents = [u16; 1];
 }
 
-impl<I: AdcInstance, A: Accumulation> voltserver_hal::dma::SrcBuffer<u16> for Adc<I, A> {}
+impl<I: AdcInstance> voltserver_hal::dma::SrcBuffer<u16> for AdcResultBuffer<I> {}
+
+
 
 #[cfg(feature = "async")]
 /// Implementation for async mode only methods

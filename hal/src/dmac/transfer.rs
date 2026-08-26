@@ -165,6 +165,10 @@ pub unsafe trait Buffer: DmaBuffer<Self::Beat> {
     fn buffer_len(&self) -> usize;
 }
 
+pub trait PeripheralBuffer: Buffer {
+    const TRIG_SRC: TriggerSource;
+}
+
 unsafe impl<T: Beat, const N: usize> Buffer for &'static mut [T; N] {
     type Beat = T;
     #[inline]
