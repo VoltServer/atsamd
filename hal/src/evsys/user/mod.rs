@@ -11,152 +11,50 @@ mod reg;
 use reg::RegisterBlock;
 
 //==============================================================================
-// UsrId
+// UserId
 //==============================================================================
-pub trait UsrId: Sealed + Sized {
+pub trait UserId: Sealed + Sized {
     const U8: u8;
     const USIZE: usize;
 
-    unsafe fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error>;
+    fn take_user(users: &mut Users) -> Result<User<Self, NoneT>, Error>;
 }
 
-pub trait AsyncUsrId: UsrId {}
-pub trait SyncUsrId: UsrId {}
+pub trait AsyncUserId: UserId {}
+pub trait SyncUserId: UserId {}
 
 //==============================================================================
-// User
+// AnyUser
 //==============================================================================
-/// Trait representing a peripheral which can be configured to receive EVSYS
-/// events.
-///
-/// # Safety
-///
-/// This trait must only be implemented on peripherals with the proper
-/// [`UsrId`](s).
-pub unsafe trait User<Id: UsrId>: Sealed {
-    /// Configure the User to act on events from the given channel.
-    ///
-    /// Returns a [`UserMux`] as validation that the EVSYS user multiplexer has
-    /// been set to the provided channel.
-    ///
-    /// # Safety
-    ///
-    /// This method does not verify that the channel and user are compatible.
-    /// [`AsyncUser::with_asynchronous_channel`],
-    /// [`SyncUser::with_synchronous_channel`]
-    /// or [`SyncUser::with_resynchronized_channel`] are the perfered safe API
-    /// methods.
-    unsafe fn with_channel_unchecked<C: AnyChannel>(
-        controller: &mut EvsysController,
-        _chan: C,
-    ) -> Result<UserMux<Id, C::Id>, Error> {
-        let mux = unsafe { Id::take_register(&mut controller.user_regs)? };
-
-        Ok(mux.to_channel())
-    }
-}
-
-/// Trait for peripherals which accept asynchronous events
-pub trait AsyncUser<Id: AsyncUsrId>: User<Id> {
-    /// Configure the User to act on events from the given channel, ensuring
-    /// that the user supports asynchronous events and the channel has been
-    /// configured as such.
-    ///
-    /// Returns a [`UserMux`] as validation that the EVSYS user multiplexer has
-    /// been set to the provided channel.
-    fn with_asynchronous_channel<C: AnyChannel<Status = Asynchronous>>(
-        controller: &mut EvsysController,
-        chan: C,
-    ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a
-        // compile-time gaurentee that the user and channel both support
-        // and are configured for asynchronous operation
-        unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
-    }
-}
-
-impl<U, Id> AsyncUser<Id> for U
-where
-    U: User<Id>,
-    Id: AsyncUsrId,
-{
-}
-
-/// Marker trait for peripherals which accept synchronous and resynchronized
-/// events
-pub trait SyncUser<Id: SyncUsrId>: User<Id> {
-    /// Configure the User to act on events from the given channel, ensuring
-    /// that the user supports synchronous events and the channel has been
-    /// configured as such.
-    ///
-    /// Returns a [`UserMux`] as validation that the EVSYS user multiplexer has
-    /// been set to the provided channel.
-    fn with_synchronous_channel<C: AnyChannel<Status = Synchronous>>(
-        controller: &mut EvsysController,
-        chan: C,
-    ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a
-        // compile-time gaurentee that the user and channel both support
-        // and are configured for synchronous operation
-        unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
-    }
-
-    /// Configure the User to act on events from the given channel, ensuring
-    /// that the user supports resynchronized events and the channel has been
-    /// configured as such.
-    ///
-    /// Returns a [`UserMux`] as validation that the EVSYS user multiplexer has
-    /// been set to the provided channel.
-    fn with_resynchronized_channel<C: AnyChannel<Status = Resynchronized>>(
-        controller: &mut EvsysController,
-        chan: C,
-    ) -> Result<UserMux<Id, C::Id>, Error> {
-        // Always safe as method signature and trait bounds serves as a
-        // compile-time gaurentee that the user and channel both support
-        // and are configured for resynchronized operation
-        unsafe { <Self as User<Id>>::with_channel_unchecked(controller, chan) }
-    }
-}
-
-impl<U, Id> SyncUser<Id> for U
-where
-    U: User<Id>,
-    Id: SyncUsrId,
-{
-}
-
-//==============================================================================
-// AnyUserMux
-//==============================================================================
-pub trait AnyUserMux: Sealed + Is<Type = SpecificUserMux<Self>> {
-    type UsrId: UsrId;
+pub trait AnyUser: Sealed + Is<Type = SpecificUser<Self>> {
+    type UserId: UserId;
     type ChId: ChId;
 }
 
-pub type SpecificUserMux<U> = UserMux<<U as AnyUserMux>::UsrId, <U as AnyUserMux>::ChId>;
+pub type SpecificUser<U> = User<<U as AnyUser>::UserId, <U as AnyUser>::ChId>;
 
-pub type UserMuxId<U> = <U as AnyUserMux>::UsrId;
-pub type UserMuxChId<U> = <U as AnyUserMux>::ChId;
+pub type UserUid<U> = <U as AnyUser>::UserId;
+pub type UserChId<U> = <U as AnyUser>::ChId;
 
-impl<Id, C> Sealed for UserMux<Id, C>
+impl<Id, C> Sealed for User<Id, C>
 where
-    Id: UsrId,
+    Id: UserId,
     C: ChId,
 {
 }
 
-impl<Id, C> AnyUserMux for UserMux<Id, C>
+impl<Id, C> AnyUser for User<Id, C>
 where
-    Id: UsrId,
+    Id: UserId,
     C: ChId,
 {
-    type UsrId = Id;
+    type UserId = Id;
     type ChId = C;
 }
 
-impl<Id, C> AsRef<Self> for UserMux<Id, C>
+impl<Id, C> AsRef<Self> for User<Id, C>
 where
-    Id: UsrId,
+    Id: UserId,
     C: ChId,
 {
     #[inline]
@@ -165,9 +63,9 @@ where
     }
 }
 
-impl<Id, C> AsMut<Self> for UserMux<Id, C>
+impl<Id, C> AsMut<Self> for User<Id, C>
 where
-    Id: UsrId,
+    Id: UserId,
     C: ChId,
 {
     #[inline]
@@ -177,56 +75,62 @@ where
 }
 
 //==============================================================================
-// UserMux
+// User
 //==============================================================================
-pub struct UserMux<Id: UsrId, C: OptionChId> {
+pub struct User<Id: UserId, C: OptionChId = NoneT> {
     regs: RegisterBlock<Id>,
     _channel: PhantomData<C>,
 }
 
-impl<Id: UsrId, C: OptionChId> UserMux<Id, C> {
+impl<Id: UserId> User<Id> {
+    pub(crate) unsafe fn new() -> User<Id, NoneT> {
+        User {
+            regs: RegisterBlock::new(),
+            _channel: PhantomData,
+        }
+    }
+}
+
+impl<Id: UserId, C: OptionChId> User<Id, C> {
     /// Updates the selected channel for this user mux
-    pub fn to_channel<Other: ChId>(mut self) -> UserMux<Id, Other> {
+    pub fn with_channel<Other: ChId>(mut self) -> User<Id, Other> {
         // Safe, as value is from ChId which is only implemented for valid
         // channels
         self.regs
             .user
             .write(|w| unsafe { w.channel().bits(Other::U8) });
 
-        UserMux {
+        User {
             regs: self.regs,
             _channel: PhantomData,
         }
     }
 }
 
-impl<Id: UsrId, C: ChId> UserMux<Id, C> {
+impl<Id: UserId, C: ChId> User<Id, C> {
     /// Disables the user multiplexer by resetting the register value
-    pub fn disable(mut self) -> UserMux<Id, NoneT> {
+    pub fn disable(mut self) -> User<Id, NoneT> {
         self.regs.user.write(|w| unsafe { w.channel().bits(0) });
 
-        UserMux {
+        User {
             regs: self.regs,
             _channel: PhantomData,
         }
     }
 }
 
-macro_rules! create_user_regs {
+macro_rules! create_users {
     (@new $name:ident, $id:literal) => {
         paste! {
             pub enum [< $name:camel >] {}
 
             impl Sealed for [< $name:camel >] {}
-            impl UsrId for [< $name:camel >] {
+            impl UserId for [< $name:camel >] {
                 const U8: u8 = $id;
                 const USIZE: usize = $id;
 
-                unsafe fn take_register(user_regs: &mut UserRegisters) -> Result<UserMux<Self, NoneT>, Error> {
-                    Ok(UserMux {
-                        regs: user_regs.[< $name:lower >].take().ok_or(Error::UserInUse)?,
-                        _channel: PhantomData,
-                    })
+                fn take_user(users: &mut Users) -> Result<User<Self, NoneT>, Error> {
+                    Ok(users.[< $name:lower >].take().ok_or(Error::UserInUse)?)
                 }
             }
         }
@@ -235,39 +139,39 @@ macro_rules! create_user_regs {
     // Internal rule for a asynchronous user
     (@async $name:ident) => {
         paste! {
-            impl AsyncUsrId for [< $name:camel >] {}
+            impl AsyncUserId for [< $name:camel >] {}
         }
     };
 
     // Internal rule for synchronous user
     (@sync $name:ident) => {
         paste! {
-            impl SyncUsrId for [< $name:camel >] {}
+            impl SyncUserId for [< $name:camel >] {}
         }
     };
 
     // Async-only user
     (@user $name:ident, $id:literal, "A") => {
         paste! {
-            create_user_regs!(@new $name, $id);
-            create_user_regs!(@async $name);
+            create_users!(@new $name, $id);
+            create_users!(@async $name);
         }
     };
 
     // Sync-only user
     (@user $name:ident, $id:literal, "S") => {
         paste! {
-            create_user_regs!(@new $name, $id);
-            create_user_regs!(@sync $name);
+            create_users!(@new $name, $id);
+            create_users!(@sync $name);
         }
     };
 
     // Sync/Async user
     (@user $name:ident, $id:literal, "AS") => {
         paste! {
-            create_user_regs!(@new $name, $id);
-            create_user_regs!(@async $name);
-            create_user_regs!(@sync $name);
+            create_users!(@new $name, $id);
+            create_users!(@async $name);
+            create_users!(@sync $name);
         }
     };
 
@@ -280,17 +184,17 @@ macro_rules! create_user_regs {
     ) => {
         paste! {
             $(
-                create_user_regs!(@user $name, $id, $type);
+                create_users!(@user $name, $id, $type);
             )+
 
-            pub struct UserRegisters {
-                $( [< $name:lower >]: Option<RegisterBlock< [< $name:camel >] >>, )+
+            pub struct Users {
+                $( [< $name:lower >]: Option<User< [< $name:camel >], NoneT>>, )+
             }
 
-            impl UserRegisters {
+            impl Users {
                 pub(super) unsafe fn new() -> Self {
-                    UserRegisters {
-                        $( [< $name:lower >]: Some(RegisterBlock::new()), )+
+                    Users {
+                        $( [< $name:lower >]: Some(unsafe { User::new() }), )+
                     }
                 }
             }
@@ -302,7 +206,7 @@ macro_rules! create_user_regs {
 // SAMD21, etc and should be handled/defined differently. Also, not all of these
 // need to be defined if the peripherals/channels are not useable (DMAC
 // channels, TCC peripherals, etc)
-create_user_regs! {
+create_users! {
     RTC_TAMPER, 0, "A";
     PORT_EV0, 1, "A";
     PORT_EV1, 2, "A";
