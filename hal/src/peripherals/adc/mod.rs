@@ -219,12 +219,14 @@ pub trait AdcInstance {
 
 pub struct AdcResultBuffer<I> {
     _instance: PhantomData<I>,
+    result_buffer: *mut u16,
 }
 
 impl<I: AdcInstance> AdcResultBuffer<I> {
-    fn new() -> Self {
+    fn new(adc: &I::Instance) -> Self {
         Self {
             _instance: PhantomData,
+            result_buffer: adc.result().as_ptr(),
         }
     }
 }
@@ -292,11 +294,13 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
             return Err(Error::ClockTooFast);
         }
 
+        let result_buffer = AdcResultBuffer::new(&adc);
+
         let mut new_adc = Self {
             adc,
             _apbclk: clk,
             cfg: settings,
-            result_buffer: Some(AdcResultBuffer::new()),
+            result_buffer: Some(result_buffer),
             discard: true,
         };
         new_adc.configure(settings);
@@ -323,11 +327,13 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
             return Err(Error::ClockTooFast);
         }
 
+        let result_buffer = AdcResultBuffer::new(&adc);
+
         I::enable_pm(pm);
         let mut new_adc = Self {
             adc,
             cfg: settings,
-            result_buffer: Some(AdcResultBuffer::new()),
+            result_buffer: Some(result_buffer),
             discard: true,
         };
         new_adc.configure(settings);
@@ -582,7 +588,7 @@ unsafe impl<I: AdcInstance> crate::dmac::Buffer for AdcResultBuffer<I> {
     type Beat = u16;
 
     fn dma_ptr(&mut self) -> *mut Self::Beat {
-        todo!()
+        self.result_buffer
     }
 
     fn incrementing(&self) -> bool {
