@@ -124,27 +124,14 @@ where
     }
 }
 
-impl<'a, const LENGTH: usize, C, S> Capture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, S>
-where
-    C: SingleEndedCaptureCfg<Sample = u16>,
-    S: CaptureState,
-    u16: Sample<CfgResolution<C>>,
-{
-    type Error = Error;
-    type Sample = u16;
-    type Output = [u16; LENGTH];
-}
-
-impl<'a, const LENGTH: usize, C> ReadyCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>>
+impl<'a, const LENGTH: usize, C> SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>> 
 where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    type Armed<'adc> = SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>> where Self: 'adc;
-
     fn arm<'adc>(self) -> Result<SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>, Error>
     where
-        'a: 'adc
+        'a: 'adc,
     {
         // Get mutable reference to ADC peripheral
         let mut adc = self.adc.try_borrow_mut().unwrap(); //TODO: handle error
@@ -185,13 +172,11 @@ where
     }
 }
 
-impl<'a, 'adc, const LENGTH: usize, C> ArmedCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>
+impl<'a, 'adc, const LENGTH: usize, C> SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>
 where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    type Busy = SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>;
-
     fn start(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>, Error> {
         self.check_for_errors()?;
 
@@ -224,13 +209,11 @@ where
     }
 }
 
-impl <'a, const LENGTH: usize, C> BusyCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Busy<'_, LENGTH, C>>
+impl<'a, const LENGTH: usize, C> SingleEndedCapture<'a, LENGTH, C, Busy<'_, LENGTH, C>>
 where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    type Complete = SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>;
-
     fn is_complete(&mut self) -> Result<bool, Error> {
         self.check_for_errors()?;
 
@@ -271,13 +254,11 @@ where
     }
 }
 
-impl<'a, const LENGTH: usize, C> CompleteCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>
+impl<'a, const LENGTH: usize, C> SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>
 where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    type Ready = SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>>;
-
     fn convert(&self) -> Result<[C::Sample; LENGTH], Error> {
         let mut adjusted_samples = [0; LENGTH];
 
@@ -305,6 +286,189 @@ where
         }
     }
 }
+
+
+//impl<'a, const LENGTH: usize, C, S> Capture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, S>
+//where
+//    C: SingleEndedCaptureCfg<Sample = u16>,
+//    S: CaptureState,
+//    u16: Sample<CfgResolution<C>>,
+//{
+//    type Error = Error;
+//    type Sample = u16;
+//    type Output = [u16; LENGTH];
+//}
+//
+//impl<'a, const LENGTH: usize, C> ReadyCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>>
+//where
+//    C: SingleEndedCaptureCfg<Sample = u16>,
+//    u16: Sample<CfgResolution<C>>,
+//{
+//    type Armed<'adc> = SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>> where Self: 'adc;
+//
+//    fn arm<'adc>(self) -> Result<SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>, Error>
+//    where
+//        'a: 'adc
+//    {
+//        // Get mutable reference to ADC peripheral
+//        let mut adc = self.adc.try_borrow_mut().unwrap(); //TODO: handle error
+//
+//        // Flush and configure the ADC, clearing any stale flags
+//        adc.disable_start_events();
+//        adc.disable_freerunning();
+//        adc.flush();
+//        adc.disable_interrupts(Flags::all());
+//        adc.clear_all_flags();
+//        adc.set_sample_mode(SampleMode::SingleEnded);
+//        adc.mux(
+//            CfgAdcChannel::<C>::MUXVAL,
+//            GND::<C::AdcInst>::MUXVAL
+//        );
+//
+//        // Arm the DMA transfer
+//        let dma_transfer = dmac::transfer::Transfer::new(
+//            self.state.dma_channel,
+//            adc.dma_buffer_take().unwrap(), //TODO: handle error
+//            self.state.dma_buffer,
+//            false,
+//            CfgAdcInstance::<C>::DMA_RESRDY_TRIGGER,
+//            dmac::TriggerAction::Burst,
+//        ).unwrap(); //TODO: handle error
+//
+//        let state = Armed {
+//            adc,
+//            dma_transfer, 
+//        };
+//
+//        Ok(SingleEndedCapture {
+//            adc: self.adc,
+//            event: self.event,
+//            oneshot: self.oneshot,
+//            state,
+//        })
+//    }
+//}
+//
+//impl<'a, 'adc, const LENGTH: usize, C> ArmedCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>
+//where
+//    C: SingleEndedCaptureCfg<Sample = u16>,
+//    u16: Sample<CfgResolution<C>>,
+//{
+//    type Busy = SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>;
+//
+//    fn start(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>, Error> {
+//        self.check_for_errors()?;
+//
+//        if self.oneshot {
+//            self.state.adc.enable_freerunning();
+//        }
+//
+//        self.state.adc.clear_all_flags();
+//        self.state.dma_transfer.clear_all_flags();
+//
+//        let dma_transfer = self.state.dma_transfer.begin();
+//
+//        self.state.adc.enable_start_events();
+//
+//        let state = Busy {
+//            adc: self.state.adc,
+//            dma_transfer,
+//        };
+//
+//        let mut capture = SingleEndedCapture {
+//            adc: self.adc,
+//            event: self.event,
+//            oneshot: self.oneshot,
+//            state,
+//        };
+//
+//        capture.check_for_errors()?;
+//
+//        Ok(capture)
+//    }
+//}
+//
+//impl <'a, const LENGTH: usize, C> BusyCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Busy<'_, LENGTH, C>>
+//where
+//    C: SingleEndedCaptureCfg<Sample = u16>,
+//    u16: Sample<CfgResolution<C>>,
+//{
+//    type Complete = SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>;
+//
+//    fn is_complete(&mut self) -> Result<bool, Error> {
+//        self.check_for_errors()?;
+//
+//        Ok(self.state.dma_transfer.is_complete())
+//    }
+//
+//    fn wait(&mut self) -> Result<(), Error> {
+//        while !self.state.dma_transfer.is_complete() {
+//            self.check_for_errors()?;
+//        }
+//
+//        self.check_for_errors()?;
+//        Ok(())
+//    }
+//
+//    fn stop(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>, Error> {
+//        self.state.adc.disable_start_events();
+//        self.state.adc.disable_freerunning();
+//
+//        self.check_for_errors()?;
+//
+//        let (dma_channel, src, dma_buffer) = self.state.dma_transfer.stop().free();
+//
+//        self.state.adc.dma_buffer_return(src);
+//
+//        let state = Complete {
+//            dma_channel,
+//            dma_buffer,
+//            shift_amt: self.state.adc.result_shift_amt(),
+//        };
+//
+//        Ok(SingleEndedCapture {
+//            adc: self.adc,
+//            event: self.event,
+//            oneshot: self.oneshot,
+//            state,
+//        })
+//    }
+//}
+//
+//impl<'a, const LENGTH: usize, C> CompleteCapture<CfgResolution<C>> for SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>
+//where
+//    C: SingleEndedCaptureCfg<Sample = u16>,
+//    u16: Sample<CfgResolution<C>>,
+//{
+//    type Ready = SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>>;
+//
+//    fn convert(&self) -> Result<[C::Sample; LENGTH], Error> {
+//        let mut adjusted_samples = [0; LENGTH];
+//
+//        for (i, sample) in self.state.dma_buffer.iter().enumerate() {
+//            adjusted_samples[i] = sample >> self.state.shift_amt;
+//        }
+//
+//        Ok(adjusted_samples)
+//    }
+//
+//    fn reset(self) -> SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>> {
+//        // Reset dma_buffer
+//        self.state.dma_buffer.as_mut_slice().fill(0);
+//
+//        let state = Ready {
+//            dma_channel: self.state.dma_channel,
+//            dma_buffer: self.state.dma_buffer,
+//        };
+//
+//        SingleEndedCapture {
+//            adc: self.adc,
+//            event: self.event,
+//            oneshot: self.oneshot,
+//            state,
+//        }
+//    }
+//}
 
 
 
