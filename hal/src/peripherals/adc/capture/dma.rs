@@ -27,7 +27,7 @@ pub trait SingleEndedCaptureCfg {
     type Event: evsys::AnyEvent<User: evsys::AnyUser<UserId = CfgAdcStartEventId<Self>>>;
 }
 
-type CfgResolution<T> = AccumulationResolution<<T as SingleEndedCaptureCfg>::Accum>;
+pub type CfgResolution<T> = AccumulationResolution<<T as SingleEndedCaptureCfg>::Accum>;
 type CfgAdcChannel<T> = <T as SingleEndedCaptureCfg>::PosCh;
 type CfgAdcStartEventId<T> = <<T as SingleEndedCaptureCfg>::AdcInst as AdcInstance>::StartEventId;
 type CfgDmaSourceBuffer<T> = AdcResultBuffer<<T as SingleEndedCaptureCfg>::AdcInst>;
@@ -129,7 +129,7 @@ where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    fn arm<'adc>(self) -> Result<SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>, Error>
+    pub fn arm<'adc>(self) -> Result<SingleEndedCapture<'a, LENGTH, C, Armed<'adc, LENGTH, C>>, Error>
     where
         'a: 'adc,
     {
@@ -177,7 +177,7 @@ where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    fn start(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>, Error> {
+    pub fn start(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Busy<'adc, LENGTH, C>>, Error> {
         self.check_for_errors()?;
 
         if self.oneshot {
@@ -214,13 +214,13 @@ where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    fn is_complete(&mut self) -> Result<bool, Error> {
+    pub fn is_complete(&mut self) -> Result<bool, Error> {
         self.check_for_errors()?;
 
         Ok(self.state.dma_transfer.is_complete())
     }
 
-    fn wait(&mut self) -> Result<(), Error> {
+    pub fn wait(&mut self) -> Result<(), Error> {
         while !self.state.dma_transfer.is_complete() {
             self.check_for_errors()?;
         }
@@ -229,7 +229,7 @@ where
         Ok(())
     }
 
-    fn stop(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>, Error> {
+    pub fn stop(mut self) -> Result<SingleEndedCapture<'a, LENGTH, C, Complete<LENGTH, C>>, Error> {
         self.state.adc.disable_start_events();
         self.state.adc.disable_freerunning();
 
@@ -259,7 +259,7 @@ where
     C: SingleEndedCaptureCfg<Sample = u16>,
     u16: Sample<CfgResolution<C>>,
 {
-    fn convert(&self) -> Result<[C::Sample; LENGTH], Error> {
+    pub fn convert(&self) -> Result<[C::Sample; LENGTH], Error> {
         let mut adjusted_samples = [0; LENGTH];
 
         for (i, sample) in self.state.dma_buffer.iter().enumerate() {
@@ -269,7 +269,7 @@ where
         Ok(adjusted_samples)
     }
 
-    fn reset(self) -> SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>> {
+    pub fn reset(self) -> SingleEndedCapture<'a, LENGTH, C, Ready<LENGTH, C>> {
         // Reset dma_buffer
         self.state.dma_buffer.as_mut_slice().fill(0);
 
