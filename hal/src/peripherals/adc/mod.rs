@@ -29,6 +29,8 @@ use core::marker::PhantomData;
 use atsamd_hal_macros::{hal_cfg, hal_module, hal_macro_helper};
 use pac::Peripherals;
 
+use voltserver_hal::adc::Resolution;
+
 use crate::pac;
 
 #[hal_module(
@@ -49,12 +51,7 @@ pub mod capture;
 mod builder;
 pub use builder::*;
 
-mod sample;
-
-mod resolution;
-pub use resolution::*;
-
-mod accumulation;
+pub mod accumulation;
 pub use accumulation::*;
 
 #[hal_cfg(any("adc-d11", "adc-d21"))]
@@ -205,6 +202,10 @@ pub trait AdcInstance {
     type StartEventId: evsys::AsyncUserId;
 
     type SyncEventId: evsys::AsyncUserId;
+
+    const DMA_RESRDY_TRIGGER: dmac::TriggerSource;
+
+    const DMA_SEQ_TRIGGER: dmac::TriggerSource;
 
     fn peripheral_reg_block(p: &mut Peripherals) -> &adc0::RegisterBlock;
 
@@ -542,11 +543,11 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
         Ok(())
     }
 
-    /// Retrieve the configured ADC sample resolution
-    #[inline]
-    pub fn get_resolution(&self) -> impl Resolution {
-        A::OutputResolution::default()
-    }
+    ///// Retrieve the configured ADC sample resolution
+    //#[inline]
+    //pub fn get_resolution(&self) -> impl Resolution {
+    //    A::OutputResolution::default()
+    //}
 
     /// Return the underlying ADC PAC object.
     #[hal_cfg(any("adc-d11", "adc-d21"))]

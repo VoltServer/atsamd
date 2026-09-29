@@ -7,11 +7,13 @@ use pac::Supc;
 use super::{FutureAdc, async_api};
 
 use super::{
-    ADC_SETTINGS_INTERNAL_READ, Accumulation, AccumulationResolution, Average, Adc, AdcInstance,
-    AdcSettings, Error, Flags, PrimaryAdc, SampleCount, SampleMode, Resolution, PTAT, CTAT, GND,
+    ADC_SETTINGS_INTERNAL_READ, Average, Accumulation, AccumulationResolution, Adc, AdcInstance,
+    AdcSettings, Error, Flags, PrimaryAdc, SampleCount, SampleMode, PTAT, CTAT, GND,
     CpuVoltageSource, PosChannel, NegChannel,
 };
-use crate::{calibration, pac};
+use voltserver_hal::adc::Resolution;
+
+use crate::{calibration, pac, dmac};
 
 /// ADC instance 0
 pub struct Adc0 {
@@ -31,6 +33,9 @@ impl AdcInstance for Adc0 {
     type StartEventId = crate::evsys::Adc0Start;
 
     type SyncEventId = crate::evsys::Adc0Sync;
+
+    const DMA_RESRDY_TRIGGER: dmac::TriggerSource = dmac::TriggerSource::Adc0Resrdy;
+    const DMA_SEQ_TRIGGER: dmac::TriggerSource = dmac::TriggerSource::Adc0Seq;
 
     #[inline]
     fn peripheral_reg_block(p: &mut pac::Peripherals) -> &pac::adc0::RegisterBlock {
@@ -85,6 +90,9 @@ impl AdcInstance for Adc1 {
 
     type SyncEventId = crate::evsys::Adc1Sync;
 
+    const DMA_RESRDY_TRIGGER: dmac::TriggerSource = dmac::TriggerSource::Adc1Resrdy;
+    const DMA_SEQ_TRIGGER: dmac::TriggerSource = dmac::TriggerSource::Adc1Seq;
+
     #[inline]
     fn peripheral_reg_block(p: &mut pac::Peripherals) -> &pac::adc0::RegisterBlock {
         &p.adc1
@@ -112,10 +120,8 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
     #[inline]
     /// Configures the ADC.
     pub(crate) fn configure(&mut self, cfg: AdcSettings<A>) {
-        if cfg != self.cfg {
-            // Set discard flag for next read
-            self.discard = true;
-        }
+        // Set discard flag for next read
+        self.discard = true;
         // Stop ADC
         self.power_down();
         self.sync();
@@ -323,6 +329,15 @@ impl<I: AdcInstance, A: Accumulation> Adc<I, A> {
             ((self.adc.result().read().result().bits() as i16) >> shift_amt) as u16
         } else {
             self.adc.result().read().result().bits() >> shift_amt
+        }
+    }
+
+    #[inline]
+    pub(super) fn result_shift_amt(&self) -> u32 {
+        if self.cfg.auto_left_adjust && self.adc.ctrlb().read().leftadj().bit_is_set() {
+            u16::BITS - AccumulationResolution::<A>::BITS
+        } else {
+            0
         }
     }
 

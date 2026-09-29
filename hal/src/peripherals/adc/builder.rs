@@ -16,7 +16,8 @@ pub use adc0::avgctrl::Samplenumselect as SampleCount;
 pub use adc0::ctrlb::Resselselect as ResolutionSelect;
 pub use adc0::refctrl::Refselselect as Reference;
 
-use super::{Adc, AdcInstance, Accumulation, Resolution, AccumulationResolution};
+use super::{Adc, AdcInstance, Accumulation, AccumulationResolution};
+use voltserver_hal::adc::Resolution;
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]

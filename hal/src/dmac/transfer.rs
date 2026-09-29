@@ -258,8 +258,8 @@ pub trait AnyBufferPair: Sealed + Is<Type = SpecificBufferPair<Self>> {
     type Src: Buffer + voltserver_hal::dma::SrcBuffer<BufferPairBeat<Self>>;
     type Dst: Buffer<Beat = BufferPairBeat<Self>> + voltserver_hal::dma::DstBuffer<BufferPairBeat<Self>>;
 
-    fn source(&mut self) -> &mut Self::Src;
-    fn destination(&mut self) -> &mut Self::Dst;
+    fn source(&self) -> &Self::Src;
+    fn destination(&self) -> &Self::Dst;
 }
 
 pub type SpecificBufferPair<C> = BufferPair<<C as AnyBufferPair>::Src, <C as AnyBufferPair>::Dst>;
@@ -283,12 +283,12 @@ where
     type Src = S;
     type Dst = D;
 
-    fn source(&mut self) -> &mut Self::Src {
-        &mut self.source
+    fn source(&self) -> &Self::Src {
+        &self.source
     }
 
-    fn destination(&mut self) -> &mut Self::Dst {
-        &mut self.destination
+    fn destination(&self) -> &Self::Dst {
+        &self.destination
     }
 }
 
@@ -439,140 +439,140 @@ where
 //==============================================================================
 // ReadyTransfer
 //==============================================================================
-pub trait ReadyTransfer: AnyTransfer {
-    type Busy: BusyTransfer<Buf = TransferBuffers<Self>>;
-
-    fn begin(self) -> Self::Busy;
-    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>);
-}
-impl<Buf, Id> ReadyTransfer for Transfer<Buf, Ready<Id>>
-where
-    Buf: AnyBufferPair,
-    Id: ChId,
-{
-    type Busy = Transfer<Buf, Busy<Id>>;
-
-    #[inline]
-    fn begin(self) -> Self::Busy {
-        self.begin()
-    }
-
-    #[inline]
-    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>) {
-        self.free()
-    }
-}
+//pub trait ReadyTransfer: AnyTransfer {
+//    type Busy: BusyTransfer<Buf = TransferBuffers<Self>>;
+//
+//    fn begin(self) -> Self::Busy;
+//    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>);
+//}
+//impl<Buf, Id> ReadyTransfer for Transfer<Buf, Ready<Id>>
+//where
+//    Buf: AnyBufferPair,
+//    Id: ChId,
+//{
+//    type Busy = Transfer<Buf, Busy<Id>>;
+//
+//    #[inline]
+//    fn begin(self) -> Self::Busy {
+//        self.begin()
+//    }
+//
+//    #[inline]
+//    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>) {
+//        self.free()
+//    }
+//}
 
 //==============================================================================
 // BusyTransfer
 //==============================================================================
-pub trait BusyTransfer: AnyTransfer {
-    type Complete: CompleteTransfer<Buf = TransferBuffers<Self>>;
-
-    fn software_trigger(&mut self);
-    unsafe fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self>;
-    unsafe fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self>;
-    fn is_complete(&mut self) -> bool;
-    fn wait(self) -> Self::Complete;
-    fn stop(self) -> Self::Complete;
-
-}
-impl<Buf, Id> BusyTransfer for Transfer<Buf, Busy<Id>>
-where
-    Buf: AnyBufferPair,
-    Id: ChId,
-{
-    type Complete = Transfer<Buf, Complete<Id>>;
-
-    #[inline]
-    fn software_trigger(&mut self) {
-        self.software_trigger();
-    }
-
-    #[inline]
-    unsafe fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self> {
-        unsafe { self.borrow_source() }
-    }
-
-    #[inline]
-    unsafe fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self> {
-        unsafe { self.borrow_destination() }
-    }
-
-    #[inline]
-    fn is_complete(&mut self) -> bool {
-        self.is_complete()
-    }
-
-    #[inline]
-    fn wait(self) -> Self::Complete {
-        self.wait()
-    }
-
-    #[inline]
-    fn stop(self) -> Self::Complete {
-        self.stop()
-    }
-}
+//pub trait BusyTransfer: AnyTransfer {
+//    type Complete: CompleteTransfer<Buf = TransferBuffers<Self>>;
+//
+//    fn software_trigger(&mut self);
+//    unsafe fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self>;
+//    unsafe fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self>;
+//    fn is_complete(&mut self) -> bool;
+//    fn wait(self) -> Self::Complete;
+//    fn stop(self) -> Self::Complete;
+//
+//}
+//impl<Buf, Id> BusyTransfer for Transfer<Buf, Busy<Id>>
+//where
+//    Buf: AnyBufferPair,
+//    Id: ChId,
+//{
+//    type Complete = Transfer<Buf, Complete<Id>>;
+//
+//    #[inline]
+//    fn software_trigger(&mut self) {
+//        self.software_trigger();
+//    }
+//
+//    #[inline]
+//    unsafe fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self> {
+//        unsafe { self.borrow_source() }
+//    }
+//
+//    #[inline]
+//    unsafe fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self> {
+//        unsafe { self.borrow_destination() }
+//    }
+//
+//    #[inline]
+//    fn is_complete(&mut self) -> bool {
+//        self.is_complete()
+//    }
+//
+//    #[inline]
+//    fn wait(self) -> Self::Complete {
+//        self.wait()
+//    }
+//
+//    #[inline]
+//    fn stop(self) -> Self::Complete {
+//        self.stop()
+//    }
+//}
 
 //==============================================================================
 // CompleteTransfer
 //==============================================================================
-pub trait CompleteTransfer: AnyTransfer {
-    type Ready: ReadyTransfer<Buf = TransferBuffers<Self>>;
-    type Busy: BusyTransfer<Buf = TransferBuffers<Self>>;
-
-    fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self>;
-    fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self>;
-    fn recycle(self, source: TransferSourceBuffer<Self>, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>)>;
-    fn recycle_source(self, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferDestinationBuffer<Self>)>;
-    fn recycle_destination(self, source: TransferSourceBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>)>;
-    fn reset(self) -> Self::Ready;
-    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>);
-}
-impl<Buf, Id> CompleteTransfer for Transfer<Buf, Complete<Id>>
-where
-    Buf: AnyBufferPair,
-    Id: ChId,
-{
-    type Ready = Transfer<Buf, Ready<Id>>;
-    type Busy = Transfer<Buf, Busy<Id>>;
-
-    #[inline]
-    fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self> {
-        self.borrow_source()
-    }
-
-    #[inline]
-    fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self> {
-        self.borrow_destination()
-    }
-
-    #[inline]
-    fn recycle(self, source: TransferSourceBuffer<Self>, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>)> {
-        self.recycle(source, destination)
-    }
-
-    #[inline]
-    fn recycle_source(self, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferDestinationBuffer<Self>)> {
-        self.recycle_source(destination)
-    }
-
-    #[inline]
-    fn recycle_destination(self, source: TransferSourceBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>)> {
-        self.recycle_destination(source)
-    }
-
-    #[inline]
-    fn reset(self) -> Self::Ready {
-        self.reset()
-    }
-
-    #[inline]
-    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>) {
-        self.free()
-    }
-}
+//pub trait CompleteTransfer: AnyTransfer {
+//    type Ready: ReadyTransfer<Buf = TransferBuffers<Self>>;
+//    type Busy: BusyTransfer<Buf = TransferBuffers<Self>>;
+//
+//    fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self>;
+//    fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self>;
+//    fn recycle(self, source: TransferSourceBuffer<Self>, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>)>;
+//    fn recycle_source(self, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferDestinationBuffer<Self>)>;
+//    fn recycle_destination(self, source: TransferSourceBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>)>;
+//    fn reset(self) -> Self::Ready;
+//    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>);
+//}
+//impl<Buf, Id> CompleteTransfer for Transfer<Buf, Complete<Id>>
+//where
+//    Buf: AnyBufferPair,
+//    Id: ChId,
+//{
+//    type Ready = Transfer<Buf, Ready<Id>>;
+//    type Busy = Transfer<Buf, Busy<Id>>;
+//
+//    #[inline]
+//    fn borrow_source(&mut self) -> &mut TransferSourceBuffer<Self> {
+//        self.borrow_source()
+//    }
+//
+//    #[inline]
+//    fn borrow_destination(&mut self) -> &mut TransferDestinationBuffer<Self> {
+//        self.borrow_destination()
+//    }
+//
+//    #[inline]
+//    fn recycle(self, source: TransferSourceBuffer<Self>, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>)> {
+//        self.recycle(source, destination)
+//    }
+//
+//    #[inline]
+//    fn recycle_source(self, destination: TransferDestinationBuffer<Self>) -> Result<(Self::Busy, TransferDestinationBuffer<Self>)> {
+//        self.recycle_source(destination)
+//    }
+//
+//    #[inline]
+//    fn recycle_destination(self, source: TransferSourceBuffer<Self>) -> Result<(Self::Busy, TransferSourceBuffer<Self>)> {
+//        self.recycle_destination(source)
+//    }
+//
+//    #[inline]
+//    fn reset(self) -> Self::Ready {
+//        self.reset()
+//    }
+//
+//    #[inline]
+//    fn free(self) -> (TransferChannel<Self>, TransferSourceBuffer<Self>, TransferDestinationBuffer<Self>) {
+//        self.free()
+//    }
+//}
 
 // TODO change source and dest types to Pin? (see https://docs.rust-embedded.org/embedonomicon/dma.html#immovable-buffers)
 /// DMA transfer, owning the resources until the transfer is done and
@@ -587,6 +587,16 @@ where
     complete: bool,
     trig_src: TriggerSource,
     trig_act: TriggerAction,
+}
+
+impl<Buf, St> Transfer<Buf, St>
+where
+    Buf: AnyBufferPair,
+    St: State,
+{
+    pub(crate) fn clear_all_flags(&mut self) {
+        self.state.channel_mut().clear_channel_errors();
+    }
 }
 
 impl<B, Id> Transfer<B, Ready<Id>>
@@ -789,7 +799,7 @@ where
     /// the DMAC hardware "thread").
     #[expect(dead_code)]
     #[inline]
-    pub(crate) unsafe fn borrow_source(&mut self) -> &mut BufferPairSrc<B> {
+    pub(crate) unsafe fn borrow_source(&self) -> &BufferPairSrc<B> {
         self.buffers.source()
     }
 
@@ -802,7 +812,7 @@ where
     /// the DMAC hardware "thread").
     #[expect(dead_code)]
     #[inline]
-    pub(crate) unsafe fn borrow_destination(&mut self) -> &mut BufferPairDst<B> {
+    pub(crate) unsafe fn borrow_destination(&self) -> &BufferPairDst<B> {
         self.buffers.destination()
     }
 
@@ -859,12 +869,12 @@ where
     Id: ChId,
 {
     /// Mutably borrow the source buffer
-    pub(crate) fn borrow_source(&mut self) -> &mut BufferPairSrc<B> {
+    pub(crate) fn borrow_source(&self) -> &BufferPairSrc<B> {
         self.buffers.source()
     }
 
     /// Mutable borrow the destination buffer
-    pub(crate) fn borrow_destination(&mut self) -> &mut BufferPairDst<B> {
+    pub(crate) fn borrow_destination(&self) -> &BufferPairDst<B> {
         self.buffers.destination()
     }
 
