@@ -275,7 +275,7 @@ impl Eic {
     ///
     /// In this mode, the peripheral cannot run in deep-sleep,
     /// but its maximum event frequency is `F_GCLK/2`
-    pub fn switch_to_gclk<S: GclkId>(&mut self, _gclk: &Pclk<v2::pclk::ids::Eic, S>) {
+    pub fn switch_to_gclk(&mut self) {
         self.eic.ctrla().write(|w| w.enable().clear_bit());
         self.sync();
         self.eic.ctrla().write(|w| {
