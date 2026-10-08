@@ -172,6 +172,28 @@ where
                 .modify(|_, w| unsafe { w.bits(P::ChId::ID as u32) });
         });
     }
+
+    /// Enable asynchronous edge detection for this pin
+    pub fn r#async(&mut self) {
+        self.chan.with_disable(|e| {
+            e.asynch().modify(|r, w| {
+                unsafe {
+                    w.bits(r.bits() | (1 << P::ChId::ID))
+                }
+            });
+        });
+    }
+
+    /// Enable synchronous edge detection for this pin
+    pub fn sync(&mut self) {
+        self.chan.with_disable(|e| {
+            e.asynch().modify(|r, w| {
+                unsafe {
+                    w.bits(r.bits() & !(1 << P::ChId::ID))
+                }
+            });
+        });
+    }
 }
 
 impl<P, C, Id, F> InputPin_02 for ExtInt<P, Id, F>
